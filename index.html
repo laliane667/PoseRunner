@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pose Runner</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            font-family: "Ubuntu Mono", monospace;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #gui {
+            font-size: small;
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        #gui-button-container {
+            display: flex;
+            flex-direction: row;
+            padding: 0 10px;
+        }
+
+        .gui-input {
+            display: flex;
+            align-items: center;
+            color: #fff;
+            z-index: 1000;
+            padding: 3px 10px
+        }
+
+        .info {
+            color: white;
+            padding: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gui">
+        <div class="gui info">Chargement du nuage de points LIDAR...</div>
+        <div class="gui-input">
+            <label for="vitesse">Vitesse : </label>
+            <input type="range" id="vitesse" min="1" max="50" value="10" style="width: 100px;">
+            <span id="vitesseValeur">10 points/s</span>
+        </div>
+
+        <div class="gui-input">
+            <label for="lissage">Lissage : </label>
+            <input type="range" id="lissage" min="1" max="20" value="5" style="width: 100px;">
+            <span id="lissageValeur">0.05</span>
+        </div>
+        <div id="gui-button-container">
+            <button id="run-animation">Run</button>
+            <button id="start">Start record</button>
+            <button id="stop">Stop recording</button>
+        </div>
+    </div>
+    <canvas id="myCanvas" width="3840" height="2160"></canvas> <!-- 4K -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PCDLoader.js"></script>
+    <script src="src/main.js" type="module"></script>
+
+
+
+
+    <script>
+        const canvas = document.querySelector("canvas");
+        const startBtn = document.getElementById("start");
+        const stopBtn = document.getElementById("stop");
+
+        let mediaRecorder;
+        let recordedChunks = [];
+
+        startBtn.onclick = async () => {
+            const stream = canvas.captureStream(30); 
+            recordedChunks = [];
+
+            mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'video/webm;codecs=vp8', 
+                videoBitsPerSecond: 20_000_000 
+            });
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm;codecs=vp8' });
+                const url = URL.createObjectURL(blob);
+
+                // Téléchargement automatique
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "capture_canvas.webm";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            };
+
+            mediaRecorder.start();
+        };
+
+        stopBtn.onclick = () => {
+            mediaRecorder.stop();
+        };
+    </script>
+
+</body>
+
+</html>
