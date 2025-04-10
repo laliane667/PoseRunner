@@ -11,7 +11,7 @@ startBtn.onclick = async () => {
 
     mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'video/webm;codecs=vp8', 
-        videoBitsPerSecond: 20_000_000 
+        videoBitsPerSecond: 30_000_000 
     });
 
     mediaRecorder.ondataavailable = (e) => {

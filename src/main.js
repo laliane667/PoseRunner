@@ -1,20 +1,20 @@
 import { chargerTrajectoire, genererTrajectoire, chargerTrajectoireCSV} from "./trajectory.js";
 
-
+let trajectoires = []; // Tableau qui contiendra toutes les trajectoires
+let trajReference = null; // Référence vers la trajectoire de vérité (index 0)
 // Variables globales
 let scene, camera, renderer, controls;
 let pointCloud;
 const pointSize = 0.05;
 let pointsTrajectoire;
 let pointsTrajectoireObj;
-
 function init() {
-    
+    // Reste du code inchangé...
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xffffff);
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 0);
+    camera.position.set(0, 0, 50);
 
     const canvas = document.getElementById("myCanvas");
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
@@ -24,35 +24,105 @@ function init() {
     controls.enableDamping = true;
     controls.dampingFactor = 0.25;
 
-    const gridHelper = new THREE.GridHelper(20, 20);
-    //scene.add(gridHelper);
-
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
 
     loadPointCloud();
 
-    chargerTrajectoireCSV()
-    .then(points => {
-      pointsTrajectoire = points;
-      pointsTrajectoireObj = afficherTrajectoire(pointsTrajectoire);
-      animationTrajectoire.trajectoirePoints = pointsTrajectoire;
-      document.querySelector('.info').innerHTML += `<br>Trajectoire de ${points.length} points chargée`;
-      ajouterBoutonDemarrer();
-    })
-    .catch(error => {
-      console.error("Erreur lors du chargement de la trajectoire:", error);
-      document.querySelector('.info').innerHTML += "<br>Erreur de chargement de la trajectoire";
-      // Fallback : générer une trajectoire si le chargement échoue
-      pointsTrajectoire = genererTrajectoire(800);
-      pointsTrajectoireObj = afficherTrajectoire(pointsTrajectoire);
-      animationTrajectoire.trajectoirePoints = pointsTrajectoire;
-      ajouterBoutonDemarrer();
+    // Chargement des trajectoires
+    const fichiersPaths = [
+        './data/GT_poses.csv',  // Trajectoire de vérité (référence)
+        './data/poses.csv',
+    ];
+
+    const nomTrajectoires = [
+        "Vérité terrain",
+        "Trajectoire 1",
+    ];
+
+    // Définir des couleurs distinctes pour chaque trajectoire
+    const couleursTrajectoires = [
+        0xff0000, // Rouge pour la trajectoire de vérité
+        0x0000ff, // Vert pour trajectoire 1
+    ];
+
+    // Charger toutes les trajectoires de manière asynchrone
+    const promesses = fichiersPaths.map((path, index) => {
+        return chargerTrajectoireCSV(path)
+            .then(points => {
+                return {
+                    points: points,
+                    couleur: new THREE.Color(couleursTrajectoires[index]),
+                    nom: nomTrajectoires[index]
+                };
+            })
+            .catch(error => {
+                console.error(`Erreur lors du chargement de la trajectoire ${index}:`, error);
+                // Fallback: générer une trajectoire si le chargement échoue
+                const pointsGenerés = genererTrajectoire(800, index);
+                return {
+                    points: pointsGenerés,
+                    couleur: new THREE.Color(couleursTrajectoires[index]),
+                    nom: nomTrajectoires[index] + " (générée)"
+                };
+            });
     });
-    // Ajout d'une information sur la trajectoire
+
+    // Attendre que toutes les trajectoires soient chargées
+    Promise.all(promesses)
+        .then(results => {
+            // Créer les objets de trajectoire et les ajouter au tableau
+            results.forEach((result, index) => {
+                const objetsTrajectoire = creerObjetsTrajectoire(result.points, result.couleur);
+                trajectoires.push({
+                    points: result.points,
+                    objets: objetsTrajectoire,
+                    couleur: result.couleur,
+                    nom: result.nom
+                });
+            });
+
+            // La première trajectoire est celle de référence
+            trajReference = trajectoires[0];
+            
+            // Configurer l'animation avec la trajectoire de référence
+            animationTrajectoire.trajectoirePoints = trajReference.points;
+            
+            document.querySelector('.info').innerHTML = `${trajectoires.length} trajectoires chargées`;
+            ajouterBoutonDemarrer();
+            ajouterListeTrajectoires();
+        })
+        .catch(error => {
+            console.error("Erreur lors du chargement des trajectoires:", error);
+            document.querySelector('.info').innerHTML = "Erreur lors du chargement des trajectoires";
+        });
 
     window.addEventListener('resize', onWindowResize);
     animate();
+}
+
+function creerObjetsTrajectoire(points, couleur) {
+    const geometriePoints = new THREE.BufferGeometry();
+    geometriePoints.setFromPoints([]); // Commence vide
+
+    // Matériel pour les points
+    const materielPoints = new THREE.PointsMaterial({
+        color: couleur,
+        size: 0.5,
+        sizeAttenuation: true
+    });
+    const pointsObjet = new THREE.Points(geometriePoints, materielPoints);
+    scene.add(pointsObjet);
+
+    // Matériel pour la ligne
+    const materielLigne = new THREE.LineBasicMaterial({
+        color: couleur,
+        linewidth: 2
+    });
+    const ligneObjet = new THREE.Line(geometriePoints, materielLigne);
+    scene.add(ligneObjet);
+
+    return { points: pointsObjet, ligne: ligneObjet };
 }
 
 
@@ -146,14 +216,6 @@ function loadPointCloud() {
 }
 
 
-let animationTrajectoire = {
-    trajectoirePoints: [],
-    pointsAffichés: [],
-    indexPointCourant: 0,
-    estEnCours: false,
-    vitesse: 10, // Points par seconde
-    dernierTemps: 0
-};
 
 function afficherTrajectoire(points) {
     animationTrajectoire.trajectoirePoints = points;
@@ -193,11 +255,19 @@ function onWindowResize() {
 let cameraSmoothing = {
     targetPosition: new THREE.Vector3(), // Position cible où la caméra veut aller
     lerpFactor: 0.05,                    // Facteur de lissage (0-1) - plus petit = plus lisse mais plus lent
-    followOffset: new THREE.Vector3(0, 0, 50) // Décalage de la caméra par rapport au point
+    followOffset: new THREE.Vector3(0, 0, 25) // Décalage de la caméra par rapport au point
+};
+// Restructurer l'objet animationTrajectoire
+let animationTrajectoire = {
+    trajectoirePoints: [], // Points de la trajectoire de référence
+    indexPointCourant: 0,
+    estEnCours: false,
+    vitesse: 10, // Points par seconde
+    dernierTemps: 0
 };
 
 function mettreAJourAnimation(temps) {
-    if (!animationTrajectoire.estEnCours) return;
+    if (!animationTrajectoire.estEnCours || trajectoires.length === 0) return;
 
     const tempsDelta = temps - animationTrajectoire.dernierTemps;
     const pointsParFrame = (animationTrajectoire.vitesse * tempsDelta) / 1000;
@@ -212,33 +282,44 @@ function mettreAJourAnimation(temps) {
     const nouveauxPoints = Math.floor(pointsParFrame);
     let pointsFinaux = animationTrajectoire.indexPointCourant + nouveauxPoints;
 
-    if (pointsFinaux >= animationTrajectoire.trajectoirePoints.length) {
-        pointsFinaux = animationTrajectoire.trajectoirePoints.length;
+    // S'assurer de ne pas dépasser le nombre de points disponibles
+    const maxPoints = Math.min(...trajectoires.map(t => t.points.length));
+    if (pointsFinaux >= maxPoints) {
+        pointsFinaux = maxPoints;
         animationTrajectoire.estEnCours = false; // Animation terminée
+        document.querySelector('.info').innerHTML = 'Animation terminée';
     }
 
-    for (let i = animationTrajectoire.indexPointCourant; i < pointsFinaux; i++) {
-        animationTrajectoire.pointsAffichés.push(animationTrajectoire.trajectoirePoints[i]);
+    // Mettre à jour toutes les trajectoires
+    for (let i = 0; i < trajectoires.length; i++) {
+        const traj = trajectoires[i];
+        
+        // Ne pas dépasser le nombre de points de cette trajectoire
+        const pointsFinauxTraj = Math.min(pointsFinaux, traj.points.length);
+        
+        // Extraire les points à afficher
+        const pointsAAfficher = traj.points.slice(0, pointsFinauxTraj);
+        
+        // Mettre à jour la géométrie
+        const geometriePoints = new THREE.BufferGeometry().setFromPoints(pointsAAfficher);
+        traj.objets.points.geometry.dispose();
+        traj.objets.points.geometry = geometriePoints;
+        
+        traj.objets.ligne.geometry.dispose();
+        traj.objets.ligne.geometry = geometriePoints.clone();
     }
 
     animationTrajectoire.indexPointCourant = pointsFinaux;
 
-    const geometriePoints = new THREE.BufferGeometry().setFromPoints(animationTrajectoire.pointsAffichés);
-    pointsTrajectoireObj.points.geometry.dispose();
-    pointsTrajectoireObj.points.geometry = geometriePoints;
-
-    pointsTrajectoireObj.ligne.geometry.dispose();
-    pointsTrajectoireObj.ligne.geometry = geometriePoints.clone();
-
-    if (animationTrajectoire.pointsAffichés.length > 0) {
-        const dernierPoint = animationTrajectoire.pointsAffichés[animationTrajectoire.pointsAffichés.length - 1];
+    // Mettre à jour la position cible de la caméra avec la trajectoire de référence
+    if (trajReference && trajReference.points.length > 0 && animationTrajectoire.indexPointCourant > 0) {
+        const dernierPoint = trajReference.points[Math.min(animationTrajectoire.indexPointCourant - 1, trajReference.points.length - 1)];
         cameraSmoothing.targetPosition.copy(dernierPoint);
     }
-
 }
 
 function updateCameraPosition() {
-    if (animationTrajectoire.pointsAffichés.length === 0) return;
+    if (animationTrajectoire.estEnCours === false) return;
     const idealPosition = new THREE.Vector3().copy(cameraSmoothing.targetPosition).add(cameraSmoothing.followOffset);
     camera.position.lerp(idealPosition, cameraSmoothing.lerpFactor);
     controls.target.lerp(cameraSmoothing.targetPosition, cameraSmoothing.lerpFactor * 1.5);
@@ -254,23 +335,22 @@ function animate(temps) {
     controls.update();
     renderer.render(scene, camera);
 }
-
 function ajouterBoutonDemarrer() {
     document.getElementById('run-animation').addEventListener('click', function () {
-        if (animationTrajectoire.trajectoirePoints.length === 0) {
-            document.querySelector('.info').innerHTML = 'Pas de points de trajectoire disponibles';
+        if (trajectoires.length === 0 || trajectoires[0].points.length === 0) {
+            document.querySelector('.info').innerHTML = 'Pas de trajectoires disponibles';
             return;
         }
 
-        animationTrajectoire.pointsAffichés = [];
+        // Réinitialiser l'animation
         animationTrajectoire.indexPointCourant = 0;
         animationTrajectoire.estEnCours = true;
         animationTrajectoire.dernierTemps = performance.now();
 
-        animationTrajectoire.pointsAffichés.push(animationTrajectoire.trajectoirePoints[0]);
-        animationTrajectoire.indexPointCourant = 1;
-
-        cameraSmoothing.targetPosition.copy(animationTrajectoire.trajectoirePoints[0]);
+        // Placer la caméra au début de la trajectoire de référence
+        if (trajReference && trajReference.points.length > 0) {
+            cameraSmoothing.targetPosition.copy(trajReference.points[0]);
+        }
 
         document.querySelector('.info').innerHTML = 'Animation en cours...';
     });
@@ -290,4 +370,88 @@ function ajouterBoutonDemarrer() {
     });
 }
 
+
+function ajouterListeTrajectoires() {
+    // Créer un conteneur pour la liste des trajectoires si pas déjà existant
+    let listeContainer = document.getElementById('liste-trajectoires');
+    if (!listeContainer) {
+        listeContainer = document.createElement('div');
+        listeContainer.id = 'liste-trajectoires';
+        listeContainer.style.position = 'absolute';
+        listeContainer.style.top = '10px';
+        listeContainer.style.right = '10px';
+        listeContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.7)';
+        listeContainer.style.padding = '10px';
+        listeContainer.style.borderRadius = '5px';
+        document.body.appendChild(listeContainer);
+    }
+
+    // Titre du panneau
+    const titre = document.createElement('h3');
+    titre.textContent = 'Trajectoires';
+    titre.style.margin = '0 0 10px 0';
+    listeContainer.appendChild(titre);
+
+    // Créer les options pour chaque trajectoire
+    trajectoires.forEach((traj, index) => {
+        const div = document.createElement('div');
+        div.style.marginBottom = '5px';
+        
+        // Case à cocher pour afficher/masquer
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `traj-${index}`;
+        checkbox.checked = true; // Par défaut affiché
+        checkbox.addEventListener('change', function() {
+            traj.objets.points.visible = this.checked;
+            traj.objets.ligne.visible = this.checked;
+        });
+        
+        // Label avec couleur
+        const label = document.createElement('label');
+        label.htmlFor = `traj-${index}`;
+        label.textContent = traj.nom;
+        label.style.marginLeft = '5px';
+        label.style.color = `#${traj.couleur.getHexString()}`;
+        label.style.fontWeight = 'bold';
+        
+        // Ajouter radio pour définir la trajectoire de référence (seulement si pas déjà la référence)
+        if (index > 0) {
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'reference';
+            radio.id = `ref-${index}`;
+            radio.style.marginLeft = '10px';
+            
+            const labelRadio = document.createElement('label');
+            labelRadio.htmlFor = `ref-${index}`;
+            labelRadio.textContent = "Référence";
+            labelRadio.style.marginLeft = '5px';
+            
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    trajReference = trajectoires[index];
+                    animationTrajectoire.trajectoirePoints = trajReference.points;
+                    document.querySelector('.info').innerHTML = `Trajectoire de référence: ${traj.nom}`;
+                }
+            });
+            
+            div.appendChild(checkbox);
+            div.appendChild(label);
+            div.appendChild(radio);
+            div.appendChild(labelRadio);
+        } else {
+            // Pour la première trajectoire (déjà référence par défaut)
+            const spanRef = document.createElement('span');
+            spanRef.textContent = " (Référence)";
+            spanRef.style.marginLeft = '10px';
+            
+            div.appendChild(checkbox);
+            div.appendChild(label);
+            div.appendChild(spanRef);
+        }
+        
+        listeContainer.appendChild(div);
+    });
+}
 init();
