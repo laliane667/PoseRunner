@@ -6,7 +6,7 @@
 - [x] 2025/04/06 — Trajectory loading (CSV loader) and camera animation.
 - [x] 2025/04/07 — Camera animation smoothing (interpollation between GT poses).
 - [x] 2025/04/10 — N-trajectory loading and display.
-- [ ] File browser for custom point cloud and/or trajectory.
+- [x] 2025/04/14 — File browser for custom point cloud and/or trajectory.
 - [ ] Inputs sliders for PC/trajectory voxel size customization.
 - [ ] Camera follow offset live adjustments.
 - [ ] Pause / reset animation buttons.

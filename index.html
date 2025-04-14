@@ -32,12 +32,16 @@
             top: 10px;
             left: 10px;
             background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 5px;
         }
 
         #gui-button-container {
             display: flex;
-            flex-direction: row;
+            flex-direction: column;
             padding: 0 10px;
+        }
+        .gui-row {
+            margin-bottom: 10px;
         }
 
         .gui-input {
@@ -52,29 +56,91 @@
             color: white;
             padding: 10px;
         }
+
+        #gui-button-container button {
+            margin-right: 5px;
+            padding: 5px 10px;
+            background-color: #444;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        #gui-button-container button:hover {
+            background-color: #666;
+        }
+
+        #gui-button-container button:active {
+            background-color: #222;
+        }
+
+        .github-badge {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            display: inline-flex;
+            align-items: center;
+            background-color: #24292e;
+            border-radius: 4px;
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 5px 10px;
+            transition: background-color 0.2s;
+        }
+        
+        .github-badge:hover {
+            background-color: #1a1f23;
+        }
+        
+        .github-logo {
+            margin-right: 8px;
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
     </style>
 </head>
 
 <body>
     <div id="gui">
-        <div class="gui info">Chargement du nuage de points LIDAR...</div>
+        <div class="gui info">Loading LIDAR point cloud...</div>
         <div class="gui-input">
-            <label for="vitesse">Vitesse : </label>
+            <label for="vitesse">Speed : </label>
             <input type="range" id="vitesse" min="1" max="50" value="10" style="width: 100px;">
             <span id="vitesseValeur">10 points/s</span>
         </div>
 
         <div class="gui-input">
-            <label for="lissage">Lissage : </label>
+            <label for="lissage">Smoothing : </label>
             <input type="range" id="lissage" min="1" max="20" value="5" style="width: 100px;">
             <span id="lissageValeur">0.05</span>
         </div>
         <div id="gui-button-container">
-            <button id="run-animation">Run</button>
-            <button id="start">Start record</button>
-            <button id="stop">Stop recording</button>
+            <div class="gui-row">
+                <button id="import-map">Import map</button>
+                <button id="import-trajectory">Import trajectory</button>
+                <input type="file" id="map-file-input" accept=".pcd" style="display: none;">
+                <input type="file" id="trajectory-file-input" accept=".csv" style="display: none;">
+            </div>
+            <div class="gui-row">
+
+                <button id="run-animation">Run</button>
+                <button id="start">Start record</button>
+                <button id="stop">Stop recording</button>
+            </div>
+            
+            
         </div>
     </div>
+    <a href="https://github.com/laliane667/PoseRunner" target="_blank" class="github-badge">
+        <svg class="github-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+        </svg>
+        Source code
+    </a>
     <canvas id="myCanvas" width="3840" height="2160"></canvas> <!-- 4K -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>

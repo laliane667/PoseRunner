@@ -1,13 +1,17 @@
-import { chargerTrajectoire, genererTrajectoire, chargerTrajectoireCSV} from "./trajectory.js";
+import { importTrajectoryCSV, genererTrajectoire, chargerTrajectoireCSV, creerObjetsTrajectoire} from "./trajectory.js";
+import { loadCustomPointCloud } from "./map.js";
 
-let trajectoires = []; // Tableau qui contiendra toutes les trajectoires
-let trajReference = null; // Référence vers la trajectoire de vérité (index 0)
+export let trajectoires = []; // Tableau qui contiendra toutes les trajectoires
+export let trajReference = null; // Référence vers la trajectoire de vérité (index 0)
 // Variables globales
-let scene, camera, renderer, controls;
-let pointCloud;
-const pointSize = 0.05;
-let pointsTrajectoire;
-let pointsTrajectoireObj;
+export let scene, camera, renderer, controls;
+export let pointCloud;
+export const pointSize = 0.05;
+
+export function setPointCloud(newPointCloud) {
+    pointCloud = newPointCloud;
+}
+
 function init() {
     // Reste du code inchangé...
     scene = new THREE.Scene();
@@ -31,19 +35,20 @@ function init() {
 
     // Chargement des trajectoires
     const fichiersPaths = [
-        './data/GT_poses.csv',  // Trajectoire de vérité (référence)
-        './data/poses.csv',
+        './example/GT_poses.csv',  // Trajectoire de vérité (référence)
+        './example/poses.csv',
     ];
 
     const nomTrajectoires = [
-        "Vérité terrain",
-        "Trajectoire 1",
+        "Ground truth",
+        "I2D-Loc",
     ];
 
     // Définir des couleurs distinctes pour chaque trajectoire
     const couleursTrajectoires = [
         0xff0000, // Rouge pour la trajectoire de vérité
         0x0000ff, // Vert pour trajectoire 1
+        0x00ff00, // Vert pour trajectoire 1
     ];
 
     // Charger toutes les trajectoires de manière asynchrone
@@ -88,42 +93,55 @@ function init() {
             // Configurer l'animation avec la trajectoire de référence
             animationTrajectoire.trajectoirePoints = trajReference.points;
             
-            document.querySelector('.info').innerHTML = `${trajectoires.length} trajectoires chargées`;
+            document.querySelector('.info').innerHTML = `${trajectoires.length} trajectories successfully loaded.`;
             ajouterBoutonDemarrer();
             ajouterListeTrajectoires();
         })
         .catch(error => {
-            console.error("Erreur lors du chargement des trajectoires:", error);
-            document.querySelector('.info').innerHTML = "Erreur lors du chargement des trajectoires";
+            console.error("Error occured during trajectories loading:", error);
+            document.querySelector('.info').innerHTML = "Trajectories loading error";
         });
+
+        setupFileImports();
 
     window.addEventListener('resize', onWindowResize);
     animate();
 }
 
-function creerObjetsTrajectoire(points, couleur) {
-    const geometriePoints = new THREE.BufferGeometry();
-    geometriePoints.setFromPoints([]); // Commence vide
-
-    // Matériel pour les points
-    const materielPoints = new THREE.PointsMaterial({
-        color: couleur,
-        size: 0.5,
-        sizeAttenuation: true
+function setupFileImports() {
+    // Configuration pour l'importation de la carte (PCD)
+    const importMapButton = document.getElementById('import-map');
+    const mapFileInput = document.getElementById('map-file-input');
+    
+    importMapButton.addEventListener('click', () => {
+        mapFileInput.click();
     });
-    const pointsObjet = new THREE.Points(geometriePoints, materielPoints);
-    scene.add(pointsObjet);
-
-    // Matériel pour la ligne
-    const materielLigne = new THREE.LineBasicMaterial({
-        color: couleur,
-        linewidth: 2
+    
+    mapFileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const fileURL = URL.createObjectURL(file);
+            loadCustomPointCloud(fileURL, file.name, scene, pointCloud, camera);
+        }
     });
-    const ligneObjet = new THREE.Line(geometriePoints, materielLigne);
-    scene.add(ligneObjet);
-
-    return { points: pointsObjet, ligne: ligneObjet };
+    
+    // Configuration pour l'importation de trajectoire (CSV)
+    const importTrajectoryButton = document.getElementById('import-trajectory');
+    const trajectoryFileInput = document.getElementById('trajectory-file-input');
+    
+    importTrajectoryButton.addEventListener('click', () => {
+        trajectoryFileInput.click();
+    });
+    
+    trajectoryFileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            importTrajectoryCSV(file);
+        }
+    });
 }
+
+
 
 
 
@@ -171,7 +189,7 @@ function createTestPointCloud() {
 function loadPointCloud() {
     const loader = new THREE.PCDLoader();
     loader.load(
-        'data/map.pcd', // Chemin vers votre fichier PCD
+        'example/mini_map.pcd', // Chemin vers votre fichier PCD
         function (points) {
             // Le loader crée automatiquement un objet Points
             scene.add(points);
@@ -197,17 +215,17 @@ function loadPointCloud() {
             camera.lookAt(center);
             controls.target.copy(center);
 
-            document.querySelector('.info').innerHTML = 'Nuage de points PCD chargé';
+            document.querySelector('.info').innerHTML = 'PCD point cloud successfully loaded.';
         },
         function (xhr) {
             // Progression du chargement
             const percentComplete = xhr.loaded / xhr.total * 100;
-            document.querySelector('.info').innerHTML = 'Chargement: ' + Math.round(percentComplete) + '%';
+            document.querySelector('.info').innerHTML = 'Loading: ' + Math.round(percentComplete) + '%';
         },
         function (error) {
             // Erreur de chargement
-            console.error('Erreur lors du chargement du fichier PCD:', error);
-            document.querySelector('.info').innerHTML = 'Erreur de chargement du PCD';
+            console.error('Error occured during PCD file loading:', error);
+            document.querySelector('.info').innerHTML = 'Error PCD loading';
 
             // Utiliser le nuage de test en cas d'erreur
             createTestPointCloud();
@@ -338,7 +356,7 @@ function animate(temps) {
 function ajouterBoutonDemarrer() {
     document.getElementById('run-animation').addEventListener('click', function () {
         if (trajectoires.length === 0 || trajectoires[0].points.length === 0) {
-            document.querySelector('.info').innerHTML = 'Pas de trajectoires disponibles';
+            document.querySelector('.info').innerHTML = 'No trajectory available.';
             return;
         }
 
@@ -352,7 +370,7 @@ function ajouterBoutonDemarrer() {
             cameraSmoothing.targetPosition.copy(trajReference.points[0]);
         }
 
-        document.querySelector('.info').innerHTML = 'Animation en cours...';
+        document.querySelector('.info').innerHTML = 'Playing animation...';
     });
 
     const curseurVitesse = document.getElementById('vitesse');
@@ -371,7 +389,7 @@ function ajouterBoutonDemarrer() {
 }
 
 
-function ajouterListeTrajectoires() {
+export function ajouterListeTrajectoires() {
     // Créer un conteneur pour la liste des trajectoires si pas déjà existant
     let listeContainer = document.getElementById('liste-trajectoires');
     if (!listeContainer) {
@@ -380,7 +398,8 @@ function ajouterListeTrajectoires() {
         listeContainer.style.position = 'absolute';
         listeContainer.style.top = '10px';
         listeContainer.style.right = '10px';
-        listeContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.7)';
+        listeContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        listeContainer.style.color = '#fff';
         listeContainer.style.padding = '10px';
         listeContainer.style.borderRadius = '5px';
         document.body.appendChild(listeContainer);
@@ -388,7 +407,7 @@ function ajouterListeTrajectoires() {
 
     // Titre du panneau
     const titre = document.createElement('h3');
-    titre.textContent = 'Trajectoires';
+    titre.textContent = 'Trajectories';
     titre.style.margin = '0 0 10px 0';
     listeContainer.appendChild(titre);
 
@@ -425,7 +444,7 @@ function ajouterListeTrajectoires() {
             
             const labelRadio = document.createElement('label');
             labelRadio.htmlFor = `ref-${index}`;
-            labelRadio.textContent = "Référence";
+            labelRadio.textContent = "Reference";
             labelRadio.style.marginLeft = '5px';
             
             radio.addEventListener('change', function() {
@@ -443,7 +462,7 @@ function ajouterListeTrajectoires() {
         } else {
             // Pour la première trajectoire (déjà référence par défaut)
             const spanRef = document.createElement('span');
-            spanRef.textContent = " (Référence)";
+            spanRef.textContent = " (Reference)";
             spanRef.style.marginLeft = '10px';
             
             div.appendChild(checkbox);

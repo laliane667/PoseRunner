@@ -1,118 +1,81 @@
-/*export function chargerTrajectoireCSV(fichierPath = './poses.csv') {
-    return new Promise((resolve, reject) => {
-      const points = [];
+import { trajectoires, trajReference, scene } from "./main.js";
+import { ajouterListeTrajectoires } from "./main.js";
+
+
+export function importTrajectoryCSV(file) {
+  document.querySelector('.info').innerHTML = `Chargement de la trajectoire ${file.name}...`;
+  
+  const reader = new FileReader();
+  reader.onload = function(event) {
+      const contenu = event.target.result; // Contenu du fichier
+      console.warn("Fichier: " + file.name);
       
-      // Utiliser fetch pour charger le fichier depuis le serveur
-      fetch(fichierPath)
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`Erreur HTTP: ${response.status}`);
-          }
-          return response.text();
-        })
-        .then(contenu => {
-          const lignes = contenu.split('\n');
-          
-          // Ignorer la première ligne si c'est un en-tête
-          const premiereLigne = lignes[0].trim();
-          const debutIndex = premiereLigne.startsWith('timestamp,x,y,z') ? 1 : 0;
-          
-          // Parcourir chaque ligne du fichier
-          for (let i = debutIndex; i < lignes.length; i++) {
-            const ligne = lignes[i].trim();
-            if (ligne === '') continue; // Ignorer les lignes vides
-            
-            const valeurs = ligne.split(',');
-            if (valeurs.length >= 4) { // Au minimum timestamp, x, y, z
-              // Extraire les coordonnées x, y, z (index 1, 2, 3 après le timestamp)
-              const x = parseFloat(valeurs[1]);
-              const y = parseFloat(valeurs[2]);
-              const z = parseFloat(valeurs[3]);
-              
-              // Vérifier si les coordonnées sont des nombres valides
-              if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-                points.push(new THREE.Vector3(x, y, z));
-              }
-            }
-          }
+      // Parser directement le contenu du fichier, ne pas refaire de fetch
+      try {
+          const points = parseCSVContent(contenu, false); // Utiliser le contenu déjà chargé
           
           if (points.length === 0) {
-            reject(new Error("Aucun point valide n'a été trouvé dans le fichier CSV"));
-          } else {
-            console.log(`Trajectoire chargée avec succès: ${points.length} points`);
-            resolve(points);
+              throw new Error("Aucun point valide n'a été trouvé dans le fichier CSV");
           }
-        })
-        .catch(error => {
-          console.error("Erreur lors du chargement du fichier CSV:", error);
-          reject(error);
-        });
-    });
-  }
-  
-  // Fonction qui combine le chargement par défaut et le chargement à partir d'un fichier utilisateur
-  export function chargerTrajectoire(fichierUtilisateur = null) {
-    if (fichierUtilisateur) {
-      // Si un fichier est fourni par l'utilisateur, utiliser FileReader
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        
-        reader.onload = function(event) {
-          const contenu = event.target.result;
-          const points = parseCSVContent(contenu);
-          if (points.length > 0) {
-            console.log(`Trajectoire chargée depuis le fichier utilisateur: ${points.length} points`);
-            resolve(points);
-          } else {
-            reject(new Error("Aucun point valide n'a été trouvé dans le fichier CSV"));
+          
+          // Créer un objet trajectoire avec la couleur suivante disponible
+          const nextColorIndex = trajectoires.length % 7;
+          const couleurs = [
+              0xff0000, // Rouge
+              0x0000ff, // Bleu
+              0x00ff00, // Vert
+              0xffff00, // Jaune
+              0xff00ff, // Magenta
+              0x00ffff, // Cyan
+              0xff8800  // Orange
+          ];
+          
+          const couleur = new THREE.Color(couleurs[nextColorIndex]);
+          const objetsTrajectoire = creerObjetsTrajectoire(points, couleur);
+          
+          // Ajouter la trajectoire au tableau des trajectoires
+          trajectoires.push({
+              points: points,
+              objets: objetsTrajectoire,
+              couleur: couleur,
+              nom: file.name.replace('.csv', '')
+          });
+          
+          // Si c'est la première trajectoire, la définir comme référence
+          if (trajectoires.length === 1) {
+              trajReference = trajectoires[0];
+              animationTrajectoire.trajectoirePoints = trajReference.points;
           }
-        };
-        
-        reader.onerror = function() {
-          reject(new Error("Erreur lors de la lecture du fichier CSV"));
-        };
-        
-        reader.readAsText(fichierUtilisateur);
-      });
-    } else {
-      // Sinon, charger le fichier par défaut
-      return chargerTrajectoireCSV();
-    }
-  }
-  
-  // Fonction auxiliaire pour parser le contenu CSV
-  function parseCSVContent(contenu) {
-    const points = [];
-    const lignes = contenu.split('\n');
-    
-    // Ignorer la première ligne si c'est un en-tête
-    const premiereLigne = lignes[0].trim();
-    const debutIndex = premiereLigne.startsWith('timestamp,x,y,z') ? 1 : 0;
-    
-    // Parcourir chaque ligne du fichier
-    for (let i = debutIndex; i < lignes.length; i++) {
-      const ligne = lignes[i].trim();
-      if (ligne === '') continue; // Ignorer les lignes vides
-      
-      const valeurs = ligne.split(',');
-      if (valeurs.length >= 4) { // Au minimum timestamp, x, y, z
-        // Extraire les coordonnées x, y, z (index 1, 2, 3 après le timestamp)
-        const x = parseFloat(valeurs[1]);
-        const y = parseFloat(valeurs[2]);
-        const z = parseFloat(valeurs[3]);
-        
-        // Vérifier si les coordonnées sont des nombres valides
-        if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-          points.push(new THREE.Vector3(x, y, z));
-        }
+          
+          document.querySelector('.info').innerHTML = `Trajectoire ${file.name} chargée (${points.length} points)`;
+          
+          // Mettre à jour la liste des trajectoires affichée
+          // Supprimer l'ancienne liste
+          const listeContainer = document.getElementById('liste-trajectoires');
+          if (listeContainer) {
+              listeContainer.innerHTML = '';
+          }
+          
+          // Recréer la liste
+          ajouterListeTrajectoires();
+          
+          console.log(`Trajectoire chargée avec succès: ${points.length} points`);
+          console.log("Premier point:", points[0]);
+          console.log("Dernier point:", points[points.length-1]);
+          
+      } catch (error) {
+          console.error('Erreur lors du parsing de la trajectoire:', error);
+          document.querySelector('.info').innerHTML = `Erreur lors du chargement de la trajectoire ${file.name}: ${error.message}`;
       }
-    }
-    
-    return points;
-  }
-
-*/
-
+  };
+  
+  reader.onerror = function() {
+      console.error('Erreur lors de la lecture du fichier');
+      document.querySelector('.info').innerHTML = 'Erreur lors de la lecture du fichier';
+  };
+  
+  reader.readAsText(file);
+}
 
 export function chargerTrajectoireCSV(fichierPath = './data/poses.csv', transformCoords = false) {
   return new Promise((resolve, reject) => {
@@ -142,6 +105,7 @@ export function chargerTrajectoireCSV(fichierPath = './data/poses.csv', transfor
       });
   });
 }
+
 
 // Fonction auxiliaire pour parser le contenu CSV avec transformation optionnelle
 function parseCSVContent(contenu, transformCoords = false) {
@@ -224,36 +188,6 @@ function parseCSVContent(contenu, transformCoords = false) {
   return points;
 }
 
-// Fonction qui combine le chargement par défaut et le chargement à partir d'un fichier utilisateur
-export function chargerTrajectoire(fichierUtilisateur = null, transformCoords = true) {
-  /*if (fichierUtilisateur) {
-    // Si un fichier est fourni par l'utilisateur, utiliser FileReader
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = function(event) {
-        const contenu = event.target.result;
-        const points = parseCSVContent(contenu, transformCoords);
-        if (points.length > 0) {
-          console.log(`Trajectoire chargée depuis le fichier utilisateur: ${points.length} points`);
-          resolve(points);
-        } else {
-          reject(new Error("Aucun point valide n'a été trouvé dans le fichier CSV"));
-        }
-      };
-      
-      reader.onerror = function() {
-        reject(new Error("Erreur lors de la lecture du fichier CSV"));
-      };
-      
-      reader.readAsText(fichierUtilisateur);
-    });
-  } else {
-    // Sinon, charger le fichier par défaut*/
-    return chargerTrajectoireCSV();
-  //}
-}
-
 // Fonction pour générer une trajectoire aléatoire
 export function genererTrajectoire(nombrePoints) {
   const points = [];
@@ -292,4 +226,29 @@ export function genererTrajectoire(nombrePoints) {
   }
 
   return points;
+}
+
+
+export function creerObjetsTrajectoire(points, couleur) {
+  const geometriePoints = new THREE.BufferGeometry();
+  geometriePoints.setFromPoints([]); // Commence vide
+
+  // Matériel pour les points
+  const materielPoints = new THREE.PointsMaterial({
+      color: couleur,
+      size: 0.5,
+      sizeAttenuation: true
+  });
+  const pointsObjet = new THREE.Points(geometriePoints, materielPoints);
+  scene.add(pointsObjet);
+
+  // Matériel pour la ligne
+  const materielLigne = new THREE.LineBasicMaterial({
+      color: couleur,
+      linewidth: 2
+  });
+  const ligneObjet = new THREE.Line(geometriePoints, materielLigne);
+  scene.add(ligneObjet);
+
+  return { points: pointsObjet, ligne: ligneObjet };
 }
