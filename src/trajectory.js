@@ -77,7 +77,7 @@ export function importTrajectoryCSV(file) {
   reader.readAsText(file);
 }
 
-export function chargerTrajectoireCSV(fichierPath = './data/poses.csv', transformCoords = false) {
+export function chargerTrajectoireCSV(fichierPath = './example/poses.csv', transformCoords = false) {
   return new Promise((resolve, reject) => {
     // Utiliser fetch pour charger le fichier depuis le serveur
     fetch(fichierPath)
