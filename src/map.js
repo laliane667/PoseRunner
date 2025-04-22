@@ -23,6 +23,7 @@ export function loadCustomPointCloud(fileURL, fileName) {
                 points.material.needsUpdate = true;
             }
 
+            alert(`This point cloud contains ${points.geometry.attributes.position.count} points.`);
             // Ajuster la caméra pour voir l'ensemble du nuage
             const box = new THREE.Box3().setFromObject(points);
             const center = box.getCenter(new THREE.Vector3());

@@ -1,12 +1,16 @@
 import { importTrajectoryCSV, genererTrajectoire, chargerTrajectoireCSV, creerObjetsTrajectoire} from "./trajectory.js";
 import { loadCustomPointCloud } from "./map.js";
 
+import { loadAndDisplayMatchPoints, addMatchPointsImportUI } from './match.js';
+
+import { CameraFrustum } from "./camera-frustum.js";
 export let trajectoires = []; // Tableau qui contiendra toutes les trajectoires
 export let trajReference = null; // Référence vers la trajectoire de vérité (index 0)
 // Variables globales
 export let scene, camera, renderer, controls;
 export let pointCloud;
 export const pointSize = 0.05;
+export let cameraFrustum; // Nouvelle variable pour le frustum
 
 export function setPointCloud(newPointCloud) {
     pointCloud = newPointCloud;
@@ -33,6 +37,8 @@ function init() {
 
     loadPointCloud();
 
+    loadAndDisplayMatchPoints('./data/000000.csv', 0x00ff00, 0.1);
+    initCameraFrustum();
     // Chargement des trajectoires
     const fichiersPaths = [
         './example/GT_poses.csv',  // Trajectoire de vérité (référence)
@@ -107,6 +113,166 @@ function init() {
     window.addEventListener('resize', onWindowResize);
     animate();
 }
+
+
+// Fonction pour initialiser le frustum de caméra
+function initCameraFrustum() {
+    // Paramètres du frustum - ajustez selon vos besoins
+    const frustumParams = {
+        fov: 60, 
+        aspect: 4/3,
+        near: 0.1,
+        far: 5,
+        color: 0xff0000,
+        // Ajoutez votre calibration extrinsèque réelle ici
+        calibration: { x: 0.25, y: 0.1, z: 0.15 } // Exemple de valeurs, à remplacer par vos données réelles
+    };
+    
+    // Créer le frustum
+    cameraFrustum = new CameraFrustum(scene, frustumParams);
+    
+    // Position initiale (0,0,0)
+    cameraFrustum.update(new THREE.Vector3(0, 0, 0));
+}
+
+// Ajouter des contrôles pour ajuster le frustum
+function setupFrustumControls() {
+    // Créer une section dans le GUI pour les contrôles du frustum
+    const guiContainer = document.getElementById('gui');
+    
+    // Section pour les paramètres du frustum
+    const frustumSection = document.createElement('div');
+    frustumSection.className = 'gui-input';
+    frustumSection.innerHTML = `
+        <label for="frustum-fov">FOV: </label>
+        <input type="range" id="frustum-fov" min="20" max="120" value="60" style="width: 100px;">
+        <span id="frustum-fov-value">60°</span>
+    `;
+    guiContainer.appendChild(frustumSection);
+    
+    // Contrôles pour la calibration
+    const calibX = document.createElement('div');
+    calibX.className = 'gui-input';
+    calibX.innerHTML = `
+        <label for="calib-x">Calib X: </label>
+        <input type="range" id="calib-x" min="-2" max="2" value="0" step="0.1" style="width: 100px;">
+        <span id="calib-x-value">0</span>
+    `;
+    guiContainer.appendChild(calibX);
+    
+    const calibY = document.createElement('div');
+    calibY.className = 'gui-input';
+    calibY.innerHTML = `
+        <label for="calib-y">Calib Y: </label>
+        <input type="range" id="calib-y" min="-2" max="2" value="0" step="0.1" style="width: 100px;">
+        <span id="calib-y-value">0</span>
+    `;
+    guiContainer.appendChild(calibY);
+    
+    const calibZ = document.createElement('div');
+    calibZ.className = 'gui-input';
+    calibZ.innerHTML = `
+        <label for="calib-z">Calib Z: </label>
+        <input type="range" id="calib-z" min="-2" max="2" value="0" step="0.1" style="width: 100px;">
+        <span id="calib-z-value">0</span>
+    `;
+    guiContainer.appendChild(calibZ);
+    
+    // Écouteurs d'événements pour les contrôles
+    document.getElementById('frustum-fov').addEventListener('input', function() {
+        const fov = parseInt(this.value);
+        document.getElementById('frustum-fov-value').textContent = fov + '°';
+        cameraFrustum.setParams({ fov: fov });
+    });
+    
+    document.getElementById('calib-x').addEventListener('input', function() {
+        const x = parseFloat(this.value);
+        document.getElementById('calib-x-value').textContent = x;
+        cameraFrustum.setParams({ calibration: { 
+            x: x,
+            y: parseFloat(document.getElementById('calib-y').value),
+            z: parseFloat(document.getElementById('calib-z').value)
+        }});
+    });
+    
+    document.getElementById('calib-y').addEventListener('input', function() {
+        const y = parseFloat(this.value);
+        document.getElementById('calib-y-value').textContent = y;
+        cameraFrustum.setParams({ calibration: { 
+            x: parseFloat(document.getElementById('calib-x').value),
+            y: y,
+            z: parseFloat(document.getElementById('calib-z').value)
+        }});
+    });
+    
+    document.getElementById('calib-z').addEventListener('input', function() {
+        const z = parseFloat(this.value);
+        document.getElementById('calib-z-value').textContent = z;
+        cameraFrustum.setParams({ calibration: { 
+            x: parseFloat(document.getElementById('calib-x').value),
+            y: parseFloat(document.getElementById('calib-y').value),
+            z: z
+        }});
+    });
+    
+    // Bouton pour activer/désactiver la visualisation du frustum
+    const toggleButton = document.createElement('div');
+    toggleButton.className = 'gui-row';
+    toggleButton.innerHTML = `
+        <button id="toggle-frustum">Hide Frustum</button>
+    `;
+    document.getElementById('gui-button-container').appendChild(toggleButton);
+    
+    let frustumVisible = true;
+    document.getElementById('toggle-frustum').addEventListener('click', function() {
+        if (frustumVisible) {
+            cameraFrustum.hide();
+            this.textContent = 'Show Frustum';
+        } else {
+            cameraFrustum.show();
+            this.textContent = 'Hide Frustum';
+        }
+        frustumVisible = !frustumVisible;
+    });
+}
+
+// Fonction pour mettre à jour le frustum durant l'animation
+export function updateFrustumPosition(position, rotation = null) {
+    if (cameraFrustum) {
+        cameraFrustum.update(position, rotation);
+    }
+}
+
+
+document.getElementById("export-csv").addEventListener("click", () => {
+    if (!pointCloud || !pointCloud.geometry) {
+        alert("Aucun nuage de points chargé !");
+        return;
+    }
+
+    const positions = pointCloud.geometry.attributes.position.array;
+    const numPoints = positions.length / 3;
+
+    let csvContent = "x,y,z\n";
+    for (let i = 0; i < numPoints; i++) {
+        const x = positions[i * 3];
+        const y = positions[i * 3 + 1];
+        const z = positions[i * 3 + 2];
+        csvContent += `${x},${y},${z}\n`;
+    }
+
+    // Création du blob et téléchargement
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pointcloud.csv";
+    a.click();
+
+    URL.revokeObjectURL(url);
+});
+
 
 function setupFileImports() {
     // Configuration pour l'importation de la carte (PCD)
@@ -276,12 +442,66 @@ let cameraSmoothing = {
     followOffset: new THREE.Vector3(0, 0, 25) // Décalage de la caméra par rapport au point
 };
 // Restructurer l'objet animationTrajectoire
-let animationTrajectoire = {
+const animationTrajectoire = {
     trajectoirePoints: [], // Points de la trajectoire de référence
     indexPointCourant: 0,
     estEnCours: false,
     vitesse: 10, // Points par seconde
-    dernierTemps: 0
+    dernierTemps: 0,
+
+    // Méthode pour démarrer l'animation
+    demarrer: function() {
+        this.active = true;
+        this.indexCourant = 0;
+        this.animer();
+    },
+    
+    // Méthode pour animer
+    animer: function() {
+        if (!this.active || this.indexCourant >= this.trajectoirePoints.length) {
+            this.active = false;
+            return;
+        }
+        
+        const pointActuel = this.trajectoirePoints[this.indexCourant];
+        
+        // Position actuelle
+        const position = new THREE.Vector3(
+            pointActuel.x,
+            pointActuel.y,
+            pointActuel.z
+        );
+        
+        // Si vous avez des quaternions dans vos données de trajectoire
+        let rotation = null;
+        if (pointActuel.qw !== undefined) {
+            rotation = new THREE.Quaternion(
+                pointActuel.qx,
+                pointActuel.qy,
+                pointActuel.qz,
+                pointActuel.qw
+            );
+        }
+        
+        // Mettre à jour la position du frustum avec la position et rotation actuelles
+        updateFrustumPosition(position, rotation);
+        
+        // Incrémenter l'index et programmer la prochaine image
+        this.indexCourant++;
+        
+        // Calculer le délai en fonction de la vitesse
+        const delai = 1000 / this.vitesse;
+        
+        // Programmer la prochaine étape
+        setTimeout(() => {
+            this.animer();
+        }, delai);
+    },
+    
+    // Méthode pour arrêter l'animation
+    arreter: function() {
+        this.active = false;
+    }
 };
 
 function mettreAJourAnimation(temps) {
