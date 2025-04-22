@@ -60,8 +60,8 @@ export function importTrajectoryCSV(file) {
           ajouterListeTrajectoires();
           
           console.log(`Trajectoire chargée avec succès: ${points.length} points`);
-          console.log("Premier point:", points[0]);
-          console.log("Dernier point:", points[points.length-1]);
+          console.log("Premier point:" + points[0]);
+          console.log("Dernier point:" + points[points.length-1]);
           
       } catch (error) {
           console.error('Erreur lors du parsing de la trajectoire:', error);
@@ -93,7 +93,7 @@ export function chargerTrajectoireCSV(fichierPath = './example/poses.csv', trans
         if (points.length === 0) {
           reject(new Error("Aucun point valide n'a été trouvé dans le fichier CSV"));
         } else {
-          console.log(`Trajectoire chargée avec succès: ${points.length} points`);
+          console.log(`Trajectoire ${fichierPath}  chargée avec succès: ${points.length} points`);
           console.log("Premier point:", points[0]);
           console.log("Dernier point:", points[points.length-1]);
           resolve(points);
@@ -106,38 +106,34 @@ export function chargerTrajectoireCSV(fichierPath = './example/poses.csv', trans
   });
 }
 
-
-// Fonction auxiliaire pour parser le contenu CSV avec transformation optionnelle
 function parseCSVContent(contenu, transformCoords = false) {
   const points = [];
   const lignes = contenu.split('\n');
   
-  // Ignorer la première ligne si c'est un en-tête
   const premiereLigne = lignes[0].trim();
   const debutIndex = premiereLigne.startsWith('timestamp,x,y,z') ? 1 : 0;
   
-  // Variables pour la normalisation
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   const rawPoints = [];
   
-  // Premier passage pour collecter les points et trouver les min/max
   for (let i = debutIndex; i < lignes.length; i++) {
     const ligne = lignes[i].trim();
-    if (ligne === '') continue; // Ignorer les lignes vides
+    if (ligne === '') continue;
     
     const valeurs = ligne.split(',');
-    if (valeurs.length >= 4) { // Au minimum timestamp, x, y, z
-      // Extraire les coordonnées x, y, z (index 1, 2, 3 après le timestamp)
+    if (valeurs.length >= 8) {
       const x = parseFloat(valeurs[1]);
       const y = parseFloat(valeurs[2]);
       const z = parseFloat(valeurs[3]);
+      const qx = parseFloat(valeurs[4]);
+      const qy = parseFloat(valeurs[5]);
+      const qz = parseFloat(valeurs[6]);
+      const qw = parseFloat(valeurs[7]);
       
-      // Vérifier si les coordonnées sont des nombres valides
-      if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-        rawPoints.push({x, y, z});
-        
-        // Mettre à jour les min/max
+      if ([x, y, z, qx, qy, qz, qw].every(v => !isNaN(v))) {
+        rawPoints.push({ x, y, z, qx, qy, qz, qw });
+
         minX = Math.min(minX, x);
         minY = Math.min(minY, y);
         minZ = Math.min(minZ, z);
@@ -147,46 +143,46 @@ function parseCSVContent(contenu, transformCoords = false) {
       }
     }
   }
-  
-  // Calculer le facteur d'échelle pour normaliser la trajectoire
+
   const maxRange = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
   const scaleFactor = (maxRange > 0 && transformCoords) ? 10 / maxRange : 1;
-  
-  // Deuxième passage pour transformer les points selon le système de coordonnées choisi
+
   rawPoints.forEach(p => {
+    let vec, quat;
+
     if (transformCoords) {
-      // Transformer les coordonnées: 
-      // - Centrer autour de l'origine
-      // - Changer le système de coordonnées (x,y,z) -> (x,z,y) pour que Y soit la hauteur
-      // - Appliquer le facteur d'échelle pour que la trajectoire ait une taille raisonnable
       const transformedX = (p.x - minX) * scaleFactor;
-      const transformedY = (p.z - minZ) * scaleFactor; // Z -> Y (hauteur)
-      const transformedZ = (p.y - minY) * scaleFactor; // Y -> Z
-      
-      points.push(new THREE.Vector3(transformedX, transformedY, transformedZ));
+      const transformedY = (p.z - minZ) * scaleFactor;
+      const transformedZ = (p.y - minY) * scaleFactor;
+
+      vec = new THREE.Vector3(transformedX, transformedY, transformedZ);
+
+      // Transformation du quaternion dans le nouveau repère
+      const qOriginal = new THREE.Quaternion(p.qx, p.qy, p.qz, p.qw);
+      const rotateQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+      quat = qOriginal.clone().premultiply(rotateQuat);
     } else {
-      // Utiliser les coordonnées telles quelles
-      points.push(new THREE.Vector3(p.x, p.y, p.z));
+      vec = new THREE.Vector3(p.x, p.y, p.z);
+      quat = new THREE.Quaternion(p.qx, p.qy, p.qz, p.qw);
     }
+
+    vec.quaternion = quat; // ⬅️ Ajout de la rotation directement à l'objet Vector3
+    points.push(vec);
   });
-  
-  // Afficher des infos de debug
+
   if (transformCoords && points.length > 0) {
     console.log("Statistiques originales:");
     console.log(`X: min=${minX.toFixed(4)}, max=${maxX.toFixed(4)}`);
     console.log(`Y: min=${minY.toFixed(4)}, max=${maxY.toFixed(4)}`);
     console.log(`Z: min=${minZ.toFixed(4)}, max=${maxZ.toFixed(4)}`);
     console.log(`Facteur d'échelle: ${scaleFactor.toFixed(4)}`);
-    
-    // Vérifier la transformation
-    const firstP = points[0];
-    const lastP = points[points.length-1];
-    console.log("Premier point transformé:", firstP);
-    console.log("Dernier point transformé:", lastP);
+    console.log("Premier point transformé:", points[0]);
+    console.log("Dernier point transformé:", points[points.length - 1]);
   }
-  
+
   return points;
 }
+
 
 // Fonction pour générer une trajectoire aléatoire
 export function genererTrajectoire(nombrePoints) {

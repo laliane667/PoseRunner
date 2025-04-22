@@ -35,14 +35,18 @@ function init() {
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
 
-    loadPointCloud();
+    //loadPointCloud();
 
-    loadAndDisplayMatchPoints('./data/000000.csv', 0x00ff00, 0.1);
-    initCameraFrustum();
+    //loadAndDisplayMatchPoints('./data/000000.csv', 0x00ff00, 0.1);
+    //loadAndDisplayMatchPoints('./data/000800.csv', 0x00ff00, 0.1);
+    loadAndDisplayMatchPoints('./data/vincent/pointcloud_0.1.csv', 0xff0000, 0.05);
+    //initCameraFrustum();
+    initKittiCameraFrustum();
+    setupFrustumControls();
     // Chargement des trajectoires
     const fichiersPaths = [
-        './example/GT_poses.csv',  // Trajectoire de vérité (référence)
-        './example/poses.csv',
+        './data/GT_poses.csv',  // Trajectoire de vérité (référence)
+        //'./example/poses.csv',
     ];
 
     const nomTrajectoires = [
@@ -125,7 +129,12 @@ function initCameraFrustum() {
         far: 5,
         color: 0xff0000,
         // Ajoutez votre calibration extrinsèque réelle ici
-        calibration: { x: 0.25, y: 0.1, z: 0.15 } // Exemple de valeurs, à remplacer par vos données réelles
+        calibration: { x: 0, y: 0, z: 0 },
+        rotation: {
+            roll: Math.PI / 2,//Math.PI / 6,    // 30°
+            pitch: Math.PI,  // 15°
+            yaw: Math.PI / 2     // 45°
+        } 
     };
     
     // Créer le frustum
@@ -134,6 +143,52 @@ function initCameraFrustum() {
     // Position initiale (0,0,0)
     cameraFrustum.update(new THREE.Vector3(0, 0, 0));
 }
+
+// Fonction pour initialiser le frustum de caméra KITTI
+function initKittiCameraFrustum() {
+    // Paramètres intrinsèques de KITTI pour la caméra couleur
+    // Ces valeurs sont généralement disponibles dans le fichier calib.txt de KITTI
+    const kittiIntrinsics = {
+        // Par exemple, pour la caméra couleur KITTI:
+        fx: 721.5377, // Distance focale en x
+        fy: 721.5377, // Distance focale en y
+        cx: 609.5593, // Point principal x
+        cy: 172.854, // Point principal y
+        width: 1242, // Largeur de l'image en pixels
+        height: 375, // Hauteur de l'image en pixels
+    };
+    
+    // Si vous avez les valeurs exactes de votre dataset, remplacez-les ci-dessus
+    
+    // Paramètres de calibration extrinsèque pour KITTI
+    // Ces valeurs sont également disponibles dans calib.txt
+    const kittiExtrinsics = {
+        x: 0.27, // Décalage en x par rapport au LIDAR (en mètres)
+        y: 0.06, // Décalage en y par rapport au LIDAR (en mètres)
+        z: 0.08  // Décalage en z par rapport au LIDAR (en mètres)
+    };
+    
+    // Rotation de la caméra par rapport au LIDAR (en radians)
+    const rotation = {
+        roll: Math.PI / 2,//Math.PI / 6,    // 30°
+        pitch: Math.PI,  // 15°
+        yaw: Math.PI / 2     // 45°
+    } ;
+    
+    // Créer le frustum avec les paramètres de KITTI
+    cameraFrustum = new CameraFrustum(scene, {
+        intrinsics: kittiIntrinsics,
+        near: 0.1,
+        far: 100.0, // La portée typique de KITTI est de 50-80 mètres
+        color: 0xff0000, // Rouge pour la visualisation
+        calibration: kittiExtrinsics,
+        rotation: rotation
+    });
+    
+    // Position initiale (0,0,0) - peut être ajustée selon vos besoins
+    cameraFrustum.update(new THREE.Vector3(0, 0, 0));
+}
+
 
 // Ajouter des contrôles pour ajuster le frustum
 function setupFrustumControls() {
@@ -302,6 +357,7 @@ function setupFileImports() {
     trajectoryFileInput.addEventListener('change', (event) => {
         const file = event.target.files[0];
         if (file) {
+            alert("Importation")
             importTrajectoryCSV(file);
         }
     });
@@ -355,7 +411,8 @@ function createTestPointCloud() {
 function loadPointCloud() {
     const loader = new THREE.PCDLoader();
     loader.load(
-        'example/mini_map.pcd', // Chemin vers votre fichier PCD
+        //'example/mini_map.pcd', // Chemin vers votre fichier PCD
+        './data/vincent/map-03-0.1.pcd', // Chemin vers votre fichier PCD
         function (points) {
             // Le loader crée automatiquement un objet Points
             scene.add(points);
@@ -442,67 +499,22 @@ let cameraSmoothing = {
     followOffset: new THREE.Vector3(0, 0, 25) // Décalage de la caméra par rapport au point
 };
 // Restructurer l'objet animationTrajectoire
+// Simplifier l'objet animationTrajectoire en supprimant les méthodes
 const animationTrajectoire = {
     trajectoirePoints: [], // Points de la trajectoire de référence
     indexPointCourant: 0,
     estEnCours: false,
     vitesse: 10, // Points par seconde
-    dernierTemps: 0,
-
-    // Méthode pour démarrer l'animation
-    demarrer: function() {
-        this.active = true;
-        this.indexCourant = 0;
-        this.animer();
-    },
-    
-    // Méthode pour animer
-    animer: function() {
-        if (!this.active || this.indexCourant >= this.trajectoirePoints.length) {
-            this.active = false;
-            return;
-        }
-        
-        const pointActuel = this.trajectoirePoints[this.indexCourant];
-        
-        // Position actuelle
-        const position = new THREE.Vector3(
-            pointActuel.x,
-            pointActuel.y,
-            pointActuel.z
-        );
-        
-        // Si vous avez des quaternions dans vos données de trajectoire
-        let rotation = null;
-        if (pointActuel.qw !== undefined) {
-            rotation = new THREE.Quaternion(
-                pointActuel.qx,
-                pointActuel.qy,
-                pointActuel.qz,
-                pointActuel.qw
-            );
-        }
-        
-        // Mettre à jour la position du frustum avec la position et rotation actuelles
-        updateFrustumPosition(position, rotation);
-        
-        // Incrémenter l'index et programmer la prochaine image
-        this.indexCourant++;
-        
-        // Calculer le délai en fonction de la vitesse
-        const delai = 1000 / this.vitesse;
-        
-        // Programmer la prochaine étape
-        setTimeout(() => {
-            this.animer();
-        }, delai);
-    },
-    
-    // Méthode pour arrêter l'animation
-    arreter: function() {
-        this.active = false;
-    }
+    dernierTemps: 0
 };
+
+// Fonction séparée pour mettre à jour le frustum avec une position et rotation
+function updateFrustumWithPose(position, rotation) {
+    // Si vous avez des quaternions dans vos données de trajectoire
+    if (position && cameraFrustum) {
+        updateFrustumPosition(position, rotation);
+    }
+}
 
 function mettreAJourAnimation(temps) {
     if (!animationTrajectoire.estEnCours || trajectoires.length === 0) return;
@@ -553,9 +565,44 @@ function mettreAJourAnimation(temps) {
     if (trajReference && trajReference.points.length > 0 && animationTrajectoire.indexPointCourant > 0) {
         const dernierPoint = trajReference.points[Math.min(animationTrajectoire.indexPointCourant - 1, trajReference.points.length - 1)];
         cameraSmoothing.targetPosition.copy(dernierPoint);
+        
+        // Mettre à jour la position et rotation du frustum de caméra
+        const pointActuel = trajReference.points[Math.min(animationTrajectoire.indexPointCourant - 1, trajReference.points.length - 1)];
+        // Position actuelle
+        const position = new THREE.Vector3(
+            pointActuel.x,
+            pointActuel.y,
+            pointActuel.z
+        );
+        
+        // Rotation (si disponible)
+        let rotation = null;
+        if (pointActuel.quaternion.w !== undefined) {
+            rotation = new THREE.Quaternion(
+                pointActuel.quaternion.x,
+                pointActuel.quaternion.y,
+                pointActuel.quaternion.z,
+                pointActuel.quaternion.w
+            );
+        } else if (pointActuel.roll !== undefined) {
+            // Si vous avez des angles d'Euler (en radians)
+            alert("Error: GT rot must be a quaternion")
+            rotation = new THREE.Euler(
+                pointActuel.roll,
+                pointActuel.pitch,
+                pointActuel.yaw,
+                'XYZ'
+            );
+            // Convertir en quaternion
+            rotation = new THREE.Quaternion().setFromEuler(rotation);
+        }else{
+            alert("Error: GT rot format is invalid")
+        }
+        
+        // Mettre à jour le frustum
+        updateFrustumWithPose(position, rotation);
     }
 }
-
 function updateCameraPosition() {
     if (animationTrajectoire.estEnCours === false) return;
     const idealPosition = new THREE.Vector3().copy(cameraSmoothing.targetPosition).add(cameraSmoothing.followOffset);
@@ -693,4 +740,83 @@ export function ajouterListeTrajectoires() {
         listeContainer.appendChild(div);
     });
 }
+
+// Fonction pour démarrer l'animation
+function demarrerAnimation() {
+    animationTrajectoire.estEnCours = true;
+    animationTrajectoire.indexPointCourant = 0;
+    animationTrajectoire.dernierTemps = performance.now();
+    document.querySelector('.info').innerHTML = 'Animation en cours...';
+}
+
+// Fonction pour arrêter l'animation
+function arreterAnimation() {
+    animationTrajectoire.estEnCours = false;
+    document.querySelector('.info').innerHTML = 'Animation arrêtée';
+}
+
+// Modifiez le gestionnaire d'événements pour le bouton d'animation
+document.getElementById('run-animation').addEventListener('click', function() {
+    if (animationTrajectoire.estEnCours) {
+        arreterAnimation();
+        this.textContent = 'Run';
+    } else {
+        demarrerAnimation();
+        this.textContent = 'Stop';
+    }
+});
+
+
+
+// Dans votre fichier principal ou là où vous gérez l'interaction
+function visualizeLidarProjections() {
+    if (!pointCloud || !cameraFrustum) return;
+    
+    // Récupérer les positions des points LIDAR
+    const positions = pointCloud.geometry.attributes.position.array;
+    const numPoints = positions.length / 3;
+    
+    // Sélectionner un sous-ensemble de points LIDAR (par exemple, tous les N points)
+    const selectedPoints = [];
+    const samplingRate = 100; // Un point sur 100
+    const maxDistance = 20; // Maximum 20 mètres de distance
+    const cameraPosition = cameraFrustum.frustumBase.position.clone();
+    
+    for (let i = 0; i < numPoints; i += samplingRate) {
+        const x = positions[i * 3];
+        const y = positions[i * 3 + 1];
+        const z = positions[i * 3 + 2];
+        
+        // Calculer la distance à la caméra
+        const distance = new THREE.Vector3(x, y, z).distanceTo(cameraPosition);
+        
+        // Si le point est assez proche
+        if (distance < maxDistance) {
+            selectedPoints.push({ x, y, z });
+        }
+    }
+    
+    // Visualiser les projections
+    cameraFrustum.visualizePointProjections(selectedPoints, {
+        pointSize: 0.05,
+        pointColor: 0xff00ff,
+        drawLines: true,
+        lineColor: 0xffff00,
+        lineOpacity: 0.3
+    });
+}
+
+// Ajouter un bouton pour activer la visualisation
+document.getElementById('gui-button-container').innerHTML += `
+    <div class="gui-row">
+        <button id="visualize-projections">Show LIDAR Projections</button>
+    </div>
+`;
+
+document.getElementById('visualize-projections').addEventListener('click', visualizeLidarProjections);
+
+
+
+
 init();
+
