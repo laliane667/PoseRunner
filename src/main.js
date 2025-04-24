@@ -1,29 +1,58 @@
 import { importTrajectoryCSV, genererTrajectoire, chargerTrajectoireCSV, creerObjetsTrajectoire} from "./trajectory.js";
 import { loadCustomPointCloud } from "./map.js";
 
-import { loadAndDisplayMatchPoints, addMatchPointsImportUI } from './match.js';
+import { loadAndDisplayMatchPoints, addMatchPointsImportUI, matchPoints } from './match.js';
 
 import { CameraFrustum } from "./camera-frustum.js";
 export let trajectoires = []; // Tableau qui contiendra toutes les trajectoires
 export let trajReference = null; // Référence vers la trajectoire de vérité (index 0)
 // Variables globales
-export let scene, camera, renderer, controls;
+export let world, scene, cameraRig, camera, renderer, controls;
 export let pointCloud;
 export const pointSize = 0.05;
 export let cameraFrustum; // Nouvelle variable pour le frustum
+
+
+let cameraSmoothing = {
+    targetPosition: new THREE.Vector3(),
+    lerpFactor: 0.05,
+    // Dans un système Y-up, un offset typique pourrait être:
+    followOffset: new THREE.Vector3(0, 0, 50) // positif en Y (hauteur), négatif en Z (recul)
+};
+
+
+const animationTrajectoire = {
+    trajectoirePoints: [], // Points de la trajectoire de référence
+    indexPointCourant: 0,
+    estEnCours: false,
+    vitesse: 10, // Points par seconde
+    dernierTemps: 0
+};
 
 export function setPointCloud(newPointCloud) {
     pointCloud = newPointCloud;
 }
 
+let STRICT_FOLLOW = true;
+
+
 function init() {
-    // Reste du code inchangé...
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xffffff);
+    world = new THREE.Scene();
+    world.background = new THREE.Color(0xffffff);
+
+    
+    scene = new THREE.Object3D();
+    scene.rotation.x = -Math.PI / 2; // -90 degrés pour transformer Z-up → Y-up
+    world.add(scene);
+    
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 50);
+    camera.position.set(0, 50, 0);
 
+    cameraRig = new THREE.Object3D();
+    /* cameraRig.add(camera);
+   */
+    scene.add(cameraRig); 
     const canvas = document.getElementById("myCanvas");
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -31,22 +60,39 @@ function init() {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.25;
-
+    // Ajouter cette configuration après l'initialisation de controls
+    controls.addEventListener('change', function() {
+        if (animationTrajectoire.estEnCours && !STRICT_FOLLOW) {
+            // Récupérer le point actuel de la trajectoire
+            const indexActuel = Math.floor(animationTrajectoire.indexPointCourant - 1);
+            const pointActuel = trajReference.points[Math.min(indexActuel, trajReference.points.length - 1)];
+            
+            // Créer un vecteur pour le point actuel avec la rotation de la scène appliquée
+            const pointVecRotated = new THREE.Vector3(pointActuel.x, pointActuel.y, pointActuel.z)
+                .applyEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+            
+            // Calculer le nouvel offset basé sur la position actuelle de la caméra par rapport au point
+            const newOffset = new THREE.Vector3().subVectors(camera.position, pointVecRotated);
+            
+            // Appliquer la rotation inverse pour stocker l'offset dans le système de coordonnées d'origine
+            cameraSmoothing.followOffset = newOffset.clone()
+                .applyEuler(new THREE.Euler(Math.PI / 2, 0, 0)); // Rotation inverse
+        }
+    });
+    controls.addEventListener('end', updateFollowOffset);
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
 
-    //loadPointCloud();
+    loadPointCloud();
 
-    //loadAndDisplayMatchPoints('./data/000000.csv', 0x00ff00, 0.1);
-    //loadAndDisplayMatchPoints('./data/000800.csv', 0x00ff00, 0.1);
-    loadAndDisplayMatchPoints('./data/vincent/pointcloud_0.1.csv', 0xff0000, 0.05);
+    loadAndDisplayMatchPoints('./data/000000down.csv', 0x00ff00, 0.1);
     //initCameraFrustum();
     initKittiCameraFrustum();
     setupFrustumControls();
     // Chargement des trajectoires
     const fichiersPaths = [
-        './data/GT_poses.csv',  // Trajectoire de vérité (référence)
-        //'./example/poses.csv',
+        './example/GT_poses.csv',  // Trajectoire de vérité (référence)
+        './example/poses.csv',
     ];
 
     const nomTrajectoires = [
@@ -118,7 +164,21 @@ function init() {
     animate();
 }
 
-
+function updateFollowOffset() {
+    if (trajReference && trajReference.points.length > 0) {
+        // Obtenir le point actuel (transformé) de la trajectoire
+        const indexActuel = Math.floor(animationTrajectoire.indexPointCourant - 1);
+        const pointActuel = trajReference.points[Math.min(indexActuel, trajReference.points.length - 1)];
+        const pointVecRotated = new THREE.Vector3(pointActuel.x, pointActuel.y, pointActuel.z)
+            .applyEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+        
+        // Calculer la différence entre la position actuelle de la caméra et le point cible
+        const offsetActuel = new THREE.Vector3().subVectors(camera.position, pointVecRotated);
+        
+        // Appliquer la rotation inverse pour stocker l'offset dans le système de coordonnées original
+        cameraSmoothing.followOffset = offsetActuel.clone().applyEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+    }
+}
 // Fonction pour initialiser le frustum de caméra
 function initCameraFrustum() {
     // Paramètres du frustum - ajustez selon vos besoins
@@ -146,7 +206,6 @@ function initCameraFrustum() {
 
 // Fonction pour initialiser le frustum de caméra KITTI
 function initKittiCameraFrustum() {
-    // Paramètres intrinsèques de KITTI pour la caméra couleur
     // Ces valeurs sont généralement disponibles dans le fichier calib.txt de KITTI
     const kittiIntrinsics = {
         // Par exemple, pour la caméra couleur KITTI:
@@ -274,11 +333,11 @@ function setupFrustumControls() {
     const toggleButton = document.createElement('div');
     toggleButton.className = 'gui-row';
     toggleButton.innerHTML = `
-        <button id="toggle-frustum">Hide Frustum</button>
+        <button id="toggle-frustum">Show Frustum</button>
     `;
     document.getElementById('gui-button-container').appendChild(toggleButton);
     
-    let frustumVisible = true;
+    let frustumVisible = false;
     document.getElementById('toggle-frustum').addEventListener('click', function() {
         if (frustumVisible) {
             cameraFrustum.hide();
@@ -411,8 +470,7 @@ function createTestPointCloud() {
 function loadPointCloud() {
     const loader = new THREE.PCDLoader();
     loader.load(
-        //'example/mini_map.pcd', // Chemin vers votre fichier PCD
-        './data/vincent/map-03-0.1.pcd', // Chemin vers votre fichier PCD
+        'example/mini_map.pcd', // Chemin vers votre fichier PCD
         function (points) {
             // Le loader crée automatiquement un objet Points
             scene.add(points);
@@ -434,9 +492,9 @@ function loadPointCloud() {
             let cameraZ = Math.abs(maxDim / (2 * Math.tan(fov / 2)));
             cameraZ *= 1.5; // Facteur pour avoir une marge
 
-            camera.position.set(center.x, center.y, center.z + cameraZ);
+            /* camera.position.set(center.x, center.y, center.z + cameraZ);
             camera.lookAt(center);
-            controls.target.copy(center);
+            controls.target.copy(center); */
 
             document.querySelector('.info').innerHTML = 'PCD point cloud successfully loaded.';
         },
@@ -493,133 +551,142 @@ function onWindowResize() {
 }
 
 
-let cameraSmoothing = {
-    targetPosition: new THREE.Vector3(), // Position cible où la caméra veut aller
-    lerpFactor: 0.05,                    // Facteur de lissage (0-1) - plus petit = plus lisse mais plus lent
-    followOffset: new THREE.Vector3(0, 0, 25) // Décalage de la caméra par rapport au point
-};
-// Restructurer l'objet animationTrajectoire
-// Simplifier l'objet animationTrajectoire en supprimant les méthodes
-const animationTrajectoire = {
-    trajectoirePoints: [], // Points de la trajectoire de référence
-    indexPointCourant: 0,
-    estEnCours: false,
-    vitesse: 10, // Points par seconde
-    dernierTemps: 0
-};
 
-// Fonction séparée pour mettre à jour le frustum avec une position et rotation
-function updateFrustumWithPose(position, rotation) {
-    // Si vous avez des quaternions dans vos données de trajectoire
-    if (position && cameraFrustum) {
-        updateFrustumPosition(position, rotation);
-    }
-}
 
-function mettreAJourAnimation(temps) {
-    if (!animationTrajectoire.estEnCours || trajectoires.length === 0) return;
-
-    const tempsDelta = temps - animationTrajectoire.dernierTemps;
-    const pointsParFrame = (animationTrajectoire.vitesse * tempsDelta) / 1000;
-
-    if (pointsParFrame < 1) {
-        updateCameraPosition();
-        return;
-    }
-
-    animationTrajectoire.dernierTemps = temps;
-
-    const nouveauxPoints = Math.floor(pointsParFrame);
-    let pointsFinaux = animationTrajectoire.indexPointCourant + nouveauxPoints;
-
-    // S'assurer de ne pas dépasser le nombre de points disponibles
-    const maxPoints = Math.min(...trajectoires.map(t => t.points.length));
-    if (pointsFinaux >= maxPoints) {
-        pointsFinaux = maxPoints;
-        animationTrajectoire.estEnCours = false; // Animation terminée
-        document.querySelector('.info').innerHTML = 'Animation terminée';
+    function mettreAJourAnimation(temps) {
+        if (!animationTrajectoire.estEnCours || trajectoires.length === 0) return;
+    
+        const tempsDelta = temps - animationTrajectoire.dernierTemps;
+        
+        // Calculer la progression basée sur le temps plutôt que sur des points entiers
+        const progressionTemporelle = (animationTrajectoire.vitesse * tempsDelta) / 1000;
+        
+        // Progression continue (pas d'arrondi à l'entier)
+        animationTrajectoire.indexPointCourant += progressionTemporelle;
+        animationTrajectoire.dernierTemps = temps;
+    
+        // Vérifier si la fin est atteinte
+        const maxPoints = Math.min(...trajectoires.map(t => t.points.length));
+        if (animationTrajectoire.indexPointCourant >= maxPoints) {
+            animationTrajectoire.indexPointCourant = maxPoints;
+            animationTrajectoire.estEnCours = false;
+            document.querySelector('.info').innerHTML = 'Animation terminée';
+        }
+    
+        // Pour l'affichage graphique des trajectoires, on continue d'utiliser des indices entiers
+        const indexAffichage = Math.floor(animationTrajectoire.indexPointCourant);
+        
+        // Mettre à jour toutes les trajectoires (comme avant, en utilisant indexAffichage)
+        for (let i = 0; i < trajectoires.length; i++) {
+            const traj = trajectoires[i];
+            const pointsFinauxTraj = Math.min(indexAffichage, traj.points.length);
+            const pointsAAfficher = traj.points.slice(0, pointsFinauxTraj);
+            
+            const geometriePoints = new THREE.BufferGeometry().setFromPoints(pointsAAfficher);
+            traj.objets.points.geometry.dispose();
+            traj.objets.points.geometry = geometriePoints;
+            
+            traj.objets.ligne.geometry.dispose();
+            traj.objets.ligne.geometry = geometriePoints.clone();
+        }
     }
 
-    // Mettre à jour toutes les trajectoires
-    for (let i = 0; i < trajectoires.length; i++) {
-        const traj = trajectoires[i];
+    function updateCameraPosition(temps) {
+        if (!animationTrajectoire.estEnCours) return;
+    
+        if (trajReference && trajReference.points.length > 0) {
+            // Calculer un index flottant pour permettre l'interpolation entre les points
+            const indexFlottant = animationTrajectoire.indexPointCourant - 1 + 
+                                 (temps - animationTrajectoire.dernierTemps) * 
+                                 (animationTrajectoire.vitesse / 1000);
+            
+            const indexActuel = Math.floor(indexFlottant);
+            const indexSuivant = Math.min(indexActuel + 1, trajReference.points.length - 1);
+            const fraction = indexFlottant - indexActuel;
+            
+            // Interpoler entre deux points consécutifs de la trajectoire
+            const pointActuel = trajReference.points[Math.min(indexActuel, trajReference.points.length - 1)];
+            const pointSuivant = trajReference.points[indexSuivant];
+            
+            // Créer un point interpolé
+            const pointInterpolé = new THREE.Vector3();
+            pointInterpolé.x = pointActuel.x * (1 - fraction) + pointSuivant.x * fraction;
+            pointInterpolé.y = pointActuel.y * (1 - fraction) + pointSuivant.y * fraction;
+            pointInterpolé.z = pointActuel.z * (1 - fraction) + pointSuivant.z * fraction;
+            
+            // Transformation en coordonnées Y-up
+            const pointVecRotated = pointInterpolé.clone().applyEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
         
-        // Ne pas dépasser le nombre de points de cette trajectoire
-        const pointsFinauxTraj = Math.min(pointsFinaux, traj.points.length);
+            controls.target.copy(pointVecRotated);
         
-        // Extraire les points à afficher
-        const pointsAAfficher = traj.points.slice(0, pointsFinauxTraj);
-        
-        // Mettre à jour la géométrie
-        const geometriePoints = new THREE.BufferGeometry().setFromPoints(pointsAAfficher);
-        traj.objets.points.geometry.dispose();
-        traj.objets.points.geometry = geometriePoints;
-        
-        traj.objets.ligne.geometry.dispose();
-        traj.objets.ligne.geometry = geometriePoints.clone();
-    }
+            // Maintenir la distance relative actuelle
+            const rotatedOffset = cameraSmoothing.followOffset.clone().applyEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+            const idealPosition = new THREE.Vector3().addVectors(pointVecRotated, rotatedOffset);
+            
+            
+            // Lissage encore plus doux
+            camera.position.lerp(idealPosition, cameraSmoothing.lerpFactor);
 
-    animationTrajectoire.indexPointCourant = pointsFinaux;
-
-    // Mettre à jour la position cible de la caméra avec la trajectoire de référence
-    if (trajReference && trajReference.points.length > 0 && animationTrajectoire.indexPointCourant > 0) {
-        const dernierPoint = trajReference.points[Math.min(animationTrajectoire.indexPointCourant - 1, trajReference.points.length - 1)];
-        cameraSmoothing.targetPosition.copy(dernierPoint);
-        
-        // Mettre à jour la position et rotation du frustum de caméra
-        const pointActuel = trajReference.points[Math.min(animationTrajectoire.indexPointCourant - 1, trajReference.points.length - 1)];
-        // Position actuelle
-        const position = new THREE.Vector3(
-            pointActuel.x,
-            pointActuel.y,
-            pointActuel.z
-        );
-        
-        // Rotation (si disponible)
-        let rotation = null;
-        if (pointActuel.quaternion.w !== undefined) {
-            rotation = new THREE.Quaternion(
-                pointActuel.quaternion.x,
-                pointActuel.quaternion.y,
-                pointActuel.quaternion.z,
-                pointActuel.quaternion.w
+            const position = new THREE.Vector3(
+                pointActuel.x,
+                pointActuel.y,
+                pointActuel.z
             );
-        } else if (pointActuel.roll !== undefined) {
-            // Si vous avez des angles d'Euler (en radians)
-            alert("Error: GT rot must be a quaternion")
-            rotation = new THREE.Euler(
-                pointActuel.roll,
-                pointActuel.pitch,
-                pointActuel.yaw,
-                'XYZ'
-            );
-            // Convertir en quaternion
-            rotation = new THREE.Quaternion().setFromEuler(rotation);
-        }else{
-            alert("Error: GT rot format is invalid")
+            
+            // Rotation (si disponible)
+            let rotation = null;
+            if (pointActuel.quaternion.w !== undefined) {
+                rotation = new THREE.Quaternion(
+                    pointActuel.quaternion.x,
+                    pointActuel.quaternion.y,
+                    pointActuel.quaternion.z,
+                    pointActuel.quaternion.w
+                );
+            } else if (pointActuel.roll !== undefined) {
+                // Si vous avez des angles d'Euler (en radians)
+                alert("Error: GT rot must be a quaternion")
+                rotation = new THREE.Euler(
+                    pointActuel.roll,
+                    pointActuel.pitch,
+                    pointActuel.yaw,
+                    'XYZ'
+                );
+                // Convertir en quaternion
+                rotation = new THREE.Quaternion().setFromEuler(rotation);
+            }else{
+                alert("Error: GT rot format is invalid")
+            }
+            
+            // Mettre à jour le frustum
+            updateFrustumPosition(position, rotation);
         }
         
-        // Mettre à jour le frustum
-        updateFrustumWithPose(position, rotation);
+        //controls.update();
     }
-}
-function updateCameraPosition() {
-    if (animationTrajectoire.estEnCours === false) return;
-    const idealPosition = new THREE.Vector3().copy(cameraSmoothing.targetPosition).add(cameraSmoothing.followOffset);
-    camera.position.lerp(idealPosition, cameraSmoothing.lerpFactor);
-    controls.target.lerp(cameraSmoothing.targetPosition, cameraSmoothing.lerpFactor * 1.5);
-    controls.update();
-}
 
-function animate(temps) {
-    requestAnimationFrame(animate);
 
-    mettreAJourAnimation(temps);
-    updateCameraPosition();
+    let dernierTempsRendu = 0;
+    const FPS_CIBLE = 60; // FPS cible
+    const INTERVALLE = 1000 / FPS_CIBLE;
+    
+    function animate(temps) {
+        requestAnimationFrame(animate);
+        
+        // Limiter le taux de rafraîchissement
+        const maintenant = performance.now();
+        const delta = maintenant - dernierTempsRendu;
+        
+        if (delta > INTERVALLE) {
+            dernierTempsRendu = maintenant - (delta % INTERVALLE);
+            
+            mettreAJourAnimation(temps);
+            updateCameraPosition(temps); // Passer le temps actuel
+            
+            controls.update();
+            renderer.render(world, camera);
+        }
+    }
 
-    controls.update();
-    renderer.render(scene, camera);
-}
 function ajouterBoutonDemarrer() {
     document.getElementById('run-animation').addEventListener('click', function () {
         if (trajectoires.length === 0 || trajectoires[0].points.length === 0) {
@@ -765,44 +832,26 @@ document.getElementById('run-animation').addEventListener('click', function() {
         this.textContent = 'Stop';
     }
 });
-
-
-
-// Dans votre fichier principal ou là où vous gérez l'interaction
 function visualizeLidarProjections() {
-    if (!pointCloud || !cameraFrustum) return;
-    
-    // Récupérer les positions des points LIDAR
-    const positions = pointCloud.geometry.attributes.position.array;
-    const numPoints = positions.length / 3;
-    
-    // Sélectionner un sous-ensemble de points LIDAR (par exemple, tous les N points)
-    const selectedPoints = [];
-    const samplingRate = 100; // Un point sur 100
-    const maxDistance = 20; // Maximum 20 mètres de distance
-    const cameraPosition = cameraFrustum.frustumBase.position.clone();
-    
-    for (let i = 0; i < numPoints; i += samplingRate) {
-        const x = positions[i * 3];
-        const y = positions[i * 3 + 1];
-        const z = positions[i * 3 + 2];
-        
-        // Calculer la distance à la caméra
-        const distance = new THREE.Vector3(x, y, z).distanceTo(cameraPosition);
-        
-        // Si le point est assez proche
-        if (distance < maxDistance) {
-            selectedPoints.push({ x, y, z });
-        }
+    if (!cameraFrustum || !matchPoints || matchPoints.length === 0) {
+        console.warn("No match points available or camera frustum not initialized");
+        return;
     }
     
-    // Visualiser les projections
-    cameraFrustum.visualizePointProjections(selectedPoints, {
-        pointSize: 0.05,
+    // For performance optimization, limit the number of points to visualize if needed
+    const maxPointsToVisualize = matchPoints.length; // You can adjust this number
+    const pointsToVisualize = matchPoints.length > maxPointsToVisualize 
+        ? matchPoints.slice(0, maxPointsToVisualize) 
+        : matchPoints;
+    
+    console.log(`Visualizing ${pointsToVisualize.length} 3D-2D correspondences`);
+    
+    cameraFrustum.visualizePointProjections(pointsToVisualize, {
+        pointSize: 0.001,
         pointColor: 0xff00ff,
         drawLines: true,
         lineColor: 0xffff00,
-        lineOpacity: 0.3
+        lineOpacity: 0.8
     });
 }
 

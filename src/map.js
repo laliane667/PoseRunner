@@ -34,9 +34,9 @@ export function loadCustomPointCloud(fileURL, fileName) {
             let cameraZ = Math.abs(maxDim / (2 * Math.tan(fov / 2)));
             cameraZ *= 1.5; // Facteur pour avoir une marge
 
-            camera.position.set(center.x, center.y, center.z + cameraZ);
+            /* camera.position.set(center.x, center.y, center.z + cameraZ);
             camera.lookAt(center);
-            controls.target.copy(center);
+            controls.target.copy(center); */
 
             document.querySelector('.info').innerHTML = `Nuage de points ${fileName} chargé`;
 

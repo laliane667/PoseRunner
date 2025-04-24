@@ -1,6 +1,5 @@
 import { scene } from './main.js';
-
-let matchPoints = []; // Pour stocker les points 3D
+export let matchPoints = []; // Pour stocker les points 3D
 let matchPointsObject = null; // Pour stocker l'objet THREE.js représentant les points
 
 /**
@@ -32,32 +31,38 @@ export function loadMatchPointsCSV(filePath) {
 /**
  * Parse le contenu CSV pour extraire les points 3D
  * @param {string} csvContent - Contenu du fichier CSV
- * @returns {Array} - Tableau de points {x, y, z}
+ * @returns {Array} - Tableau de points {x, y, z, u, v}
  */
 function parseMatchPointsCSV(csvContent) {
     const lines = csvContent.trim().split('\n');
     const points = [];
     
-    // Parcourir toutes les lignes (en sautant l'en-tête si présent)
-    for (let i = 0; i < lines.length; i++) {
+    // Skip header line if it exists
+    const startLine = lines[0].includes('x,y,z,u,v') ? 1 : 0;
+    
+    // Parse all lines (skipping header if present)
+    for (let i = startLine; i < lines.length; i++) {
         const line = lines[i].trim();
         
-        // Ignorer les lignes vides ou les commentaires
+        // Skip empty lines or comments
         if (line === '' || line.startsWith('#')) continue;
         
-        // Séparer les valeurs par des virgules ou des espaces
+        // Split values by commas or spaces
         const values = line.split(/[\s,]+/);
         
-        // Vérifier que nous avons au moins 3 valeurs (x, y, z)
-        if (values.length >= 3) {
+        // Check that we have at least 5 values (x, y, z, u, v)
+        if (values.length >= 5) {
             const point = {
                 x: parseFloat(values[0]),
                 y: parseFloat(values[1]),
-                z: parseFloat(values[2])
+                z: parseFloat(values[2]),
+                u: parseFloat(values[3]),
+                v: parseFloat(values[4])
             };
             
-            // Vérifier que les valeurs sont bien des nombres
-            if (!isNaN(point.x) && !isNaN(point.y) && !isNaN(point.z)) {
+            // Check that all values are numbers
+            if (!isNaN(point.x) && !isNaN(point.y) && !isNaN(point.z) && 
+                !isNaN(point.u) && !isNaN(point.v)) {
                 points.push(point);
             }
         }

@@ -65,7 +65,7 @@ export class CameraFrustum {
         const planeMaterial = new THREE.MeshBasicMaterial({
             color: this.params.color,
             transparent: true,
-            opacity: 0.1,
+            opacity: 0.3,
             side: THREE.DoubleSide
         });
         
@@ -142,7 +142,7 @@ export class CameraFrustum {
         // Ajouter le groupe à la scène
         this.scene.add(this.frustumBase);
 
-        
+        this.hide();
         return this.frustumBase;
     }
     
@@ -203,9 +203,8 @@ export class CameraFrustum {
         this.frustumBase.updateMatrixWorld(true);
         invMatrix.copy(this.frustumBase.matrixWorld).invert();
         
-        // Transformer le point du système global au système local de la caméra
         const cameraPoint = worldPoint.applyMatrix4(invMatrix);
-        
+
         // Si le point est derrière la caméra, il n'est pas visible
         if (cameraPoint.z > 0) {
             return null;
@@ -219,10 +218,6 @@ export class CameraFrustum {
             cy: 0
         };
         
-        // Projeter le point 3D sur le plan image
-        // Les formules de projection perspective sont:
-        // x_2d = fx * x_3d / z_3d + cx
-        // y_2d = fy * y_3d / z_3d + cy
         const x_2d = (-fx * cameraPoint.x / cameraPoint.z) + cx;
         const y_2d = (-fy * cameraPoint.y / cameraPoint.z) + cy;
         
@@ -233,6 +228,8 @@ export class CameraFrustum {
         // Convertir les coordonnées normalisées en coordonnées sur le plan image
         const u = (x_2d + 1) * 0.5 * nearWidth - nearWidth / 2;
         const v = (y_2d + 1) * 0.5 * nearHeight - nearHeight / 2;
+      
+
         
         // On renvoie les coordonnées dans le plan image ainsi que la profondeur (utile pour z-buffer)
         return { 
@@ -242,17 +239,15 @@ export class CameraFrustum {
             visible: true 
         };
     }
-    
-    // Ajouter une méthode pour visualiser la projection de points LIDAR sur le plan image
-    visualizePointProjections(lidarPoints, options = {}) {
-        // Supprimer les visualisations précédentes
+    visualizePointProjections(matchPoints, options = {}) {
+        // Remove previous visualizations
         this.clearVisualizations();
         
-        // Créer un groupe pour contenir les visualisations
+        // Create a group to contain visualizations - directly added to the scene
         this.visualizationGroup = new THREE.Group();
-        this.frustumObject.add(this.visualizationGroup);
+        this.scene.add(this.visualizationGroup);
         
-        // Options par défaut
+        // Default options
         const defaultOptions = {
             pointSize: 0.02,
             pointColor: 0xffff00,
@@ -263,42 +258,81 @@ export class CameraFrustum {
         
         const settings = { ...defaultOptions, ...options };
         
-        // Créer un matériau pour les points projetés
+        // Create material for projected points
         const pointMaterial = new THREE.PointsMaterial({
             color: settings.pointColor,
             size: settings.pointSize
         });
         
-        // Créer un matériau pour les lignes
+        // Create material for lines
         const lineMaterial = new THREE.LineBasicMaterial({
             color: settings.lineColor,
             transparent: true,
             opacity: settings.lineOpacity
         });
         
-        // Pour chaque point LIDAR
-        lidarPoints.forEach(point => {
-            // Projeter le point sur le plan image
-            const projection = this.projectPoint(point);
-            
-            if (projection && projection.visible) {
-                // Créer un point pour la visualisation sur le plan image
+        // Calculate dimensions of the near plane
+        const fovRad = this.params.fov * Math.PI / 180;
+    // Inverser l'aspect ratio pour compenser la rotation
+    const correctedAspect = 1 / this.params.aspect;
+    const nearHeight = 2 * Math.tan(fovRad / 2) * this.params.near;
+    // Utiliser l'aspect corrigé
+    const nearWidth = nearHeight * correctedAspect;
+        
+        // Get world matrix of the frustum for transforming points
+        this.frustumBase.updateMatrixWorld(true);
+        this.frustumObject.updateMatrixWorld(true);
+        
+        // For each match point
+        matchPoints.forEach(point => {
+            if (point.u !== undefined && point.v !== undefined) {
+                // Get image dimensions from intrinsics
+                const imageWidth = this.params.intrinsics ? this.params.intrinsics.width : 1242;
+                const imageHeight = this.params.intrinsics ? this.params.intrinsics.height : 375;
+                
+                // Normaliser d'abord au format [-1, 1]
+                // Note: Nous maintenons l'inversion de Y pour l'orientation de l'image
+                let normalizedU = (point.u / imageWidth) * 2 - 1;
+                let normalizedV = (point.v / imageHeight) * 2 - 1; // Changement ici: ne pas inverser Y
+                
+                // Appliquer une rotation de -π/2 aux coordonnées normalisées
+                const tempU = normalizedU;
+                normalizedU = -normalizedV; // Rotation de -π/2: x' = -y
+                normalizedV = tempU;        // Rotation de -π/2: y' = x
+                
+                // Maintenant on inverse l'axe V pour corriger l'inversion haut/bas
+                normalizedV = -normalizedV;
+                
+                // Appliquer l'échelle pour obtenir les coordonnées sur le plan near
+                normalizedU *= (nearWidth / 2);
+                normalizedV *= (nearHeight / 2);
+                
+                // Create a vector for the point on the near plane
+                const nearPlanePoint = new THREE.Vector3(
+                    normalizedU, 
+                    normalizedV, 
+                    -this.params.near
+                );
+                
+                // Appliquer les transformations
+                const localPoint = nearPlanePoint.clone();
+                localPoint.applyMatrix4(this.frustumObject.matrixWorld);
+                
+                // Create a point for visualization on the image plane
                 const pointGeometry = new THREE.BufferGeometry();
                 pointGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
-                    projection.u, projection.v, -this.params.near
+                    localPoint.x, localPoint.y, localPoint.z
                 ], 3));
                 
                 const pointMesh = new THREE.Points(pointGeometry, pointMaterial);
                 this.visualizationGroup.add(pointMesh);
                 
-                // Si on veut dessiner des lignes entre les points 3D et leur projection
-                if (settings.drawLines) {
+                // If we want to draw lines between 3D points and their projection
+                if (settings.drawLines && point.x !== undefined) {
                     const lineGeometry = new THREE.BufferGeometry();
                     lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
-                        point.x - this.frustumBase.position.x,
-                        point.y - this.frustumBase.position.y,
-                        point.z - this.frustumBase.position.z,
-                        projection.u, projection.v, -this.params.near
+                        point.x, point.y, point.z,
+                        localPoint.x, localPoint.y, localPoint.z
                     ], 3));
                     
                     const line = new THREE.Line(lineGeometry, lineMaterial);
@@ -316,7 +350,7 @@ export class CameraFrustum {
                 if (object.material) object.material.dispose();
             });
             
-            this.frustumObject.remove(this.visualizationGroup);
+            this.scene.remove(this.visualizationGroup);
             this.visualizationGroup = null;
         }
     }
