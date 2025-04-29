@@ -22,9 +22,14 @@
 
         canvas {
             display: block;
+            z-index: 0;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
 
         #gui {
+            z-index: 100;
             font-size: small;
             position: absolute;
             display: flex;
@@ -128,7 +133,7 @@
             <div class="gui-row">
 
                 <button id="run-animation">Run</button>
-                <button id="start">Start record</button>
+                <button id="start-record">Start record</button>
                 <button id="stop">Stop recording</button>
             </div>
             <div class="gui-row">
@@ -144,12 +149,12 @@
         Source code
     </a>
     <canvas id="myCanvas" width="3840" height="2160"></canvas> <!-- 4K -->
+    <script src="src/screen-record.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PCDLoader.js"></script>
     <script src="src/main.js" type="module"></script>
-    <script src="src/screen-record.js"></script>
-
+    
 </body>
 
 </html>

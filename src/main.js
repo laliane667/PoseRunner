@@ -85,7 +85,7 @@ function init() {
 
     loadPointCloud();
 
-    loadAndDisplayMatchPoints('./data/000000down.csv', 0x00ff00, 0.1);
+    loadAndDisplayMatchPoints('./data/000074.csv', 0x00ff00, 0.2);
     //initCameraFrustum();
     initKittiCameraFrustum();
     setupFrustumControls();
@@ -93,11 +93,13 @@ function init() {
     const fichiersPaths = [
         './example/GT_poses.csv',  // Trajectoire de vérité (référence)
         './example/poses.csv',
+        './data/poses_masterloc.csv'
     ];
 
     const nomTrajectoires = [
         "Ground truth",
         "I2D-Loc",
+        "Master_Loc"
     ];
 
     // Définir des couleurs distinctes pour chaque trajectoire
@@ -165,7 +167,7 @@ function init() {
 }
 
 function updateFollowOffset() {
-    if (trajReference && trajReference.points.length > 0) {
+    if (animationTrajectoire.estEnCours && trajReference && trajReference.points.length > 0) {
         // Obtenir le point actuel (transformé) de la trajectoire
         const indexActuel = Math.floor(animationTrajectoire.indexPointCourant - 1);
         const pointActuel = trajReference.points[Math.min(indexActuel, trajReference.points.length - 1)];
@@ -470,7 +472,7 @@ function createTestPointCloud() {
 function loadPointCloud() {
     const loader = new THREE.PCDLoader();
     loader.load(
-        'example/mini_map.pcd', // Chemin vers votre fichier PCD
+        'data/map-03_0.001_0-200.pcd', // Chemin vers votre fichier PCD
         function (points) {
             // Le loader crée automatiquement un objet Points
             scene.add(points);

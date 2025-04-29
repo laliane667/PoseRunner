@@ -1,39 +1,42 @@
-const canvas = document.querySelector("canvas");
-const startBtn = document.getElementById("start");
-const stopBtn = document.getElementById("stop");
+document.addEventListener("DOMContentLoaded", () => {
+    const canvas = document.querySelector("canvas");
+    const startBtn = document.getElementById("start-record");
+    const stopBtn = document.getElementById("stop");
 
-let mediaRecorder;
-let recordedChunks = [];
+    console.log("DOM ready, attaching events...");
 
-startBtn.onclick = async () => {
-    const stream = canvas.captureStream(30); 
-    recordedChunks = [];
+    let mediaRecorder;
+    let recordedChunks = [];
 
-    mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp8', 
-        videoBitsPerSecond: 30_000_000 
-    });
+    startBtn.onclick = async () => {
+        alert("Recording started");
+        const stream = canvas.captureStream(30);
+        recordedChunks = [];
 
-    mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
+        mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'video/webm;codecs=vp8',
+            videoBitsPerSecond: 30_000_000
+        });
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm;codecs=vp8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "capture_canvas.webm";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        };
+
+        mediaRecorder.start();
     };
 
-    mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: 'video/webm;codecs=vp8' });
-        const url = URL.createObjectURL(blob);
-
-        // Téléchargement automatique
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "capture_canvas.webm";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+    stopBtn.onclick = () => {
+        mediaRecorder?.stop();
     };
-
-    mediaRecorder.start();
-};
-
-stopBtn.onclick = () => {
-    mediaRecorder.stop();
-};
+});
