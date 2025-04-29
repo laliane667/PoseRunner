@@ -1,8 +1,11 @@
 # PoseRunner
+
+
+<p align="center">
+  <img src="assets/pose-runner-log.png" width="75px">
+</p>
+
 [[Website]](https://laliane667.github.io/PoseRunner/) 
-
-
-<img src="assets/pose-runner-log.png">
 
 ## Release Status
 - [x] 2025/04/04 — 3D scene creation, point cloud loading and visualization (PCD loader).
