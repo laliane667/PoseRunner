@@ -2,7 +2,7 @@
 
 
 <p align="center">
-  <img src="assets/pose-runner-log.png" width="150px">
+  <img src="assets/pose-runner-log.png" width="250px">
 </p>
 
 [[Website]](https://laliane667.github.io/PoseRunner/) 
