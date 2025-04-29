@@ -1,6 +1,9 @@
 # PoseRunner
 [[Website]](https://laliane667.github.io/PoseRunner/) 
 
+
+<img src="assets/pose-runner-log.png">
+
 ## Release Status
 - [x] 2025/04/04 — 3D scene creation, point cloud loading and visualization (PCD loader).
 - [x] 2025/04/06 — Trajectory loading (CSV loader) and camera animation.
