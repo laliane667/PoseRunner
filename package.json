@@ -1,0 +1,38 @@
+{
+  "name": "pose-runner",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --linux",
+    "build:deb": "electron-builder --linux deb",
+    "build:rpm": "electron-builder --linux rpm",
+    "build:AppImage": "electron-builder --linux AppImage"
+  },
+  "build": {
+    "appId": "com.pose-runner",
+    "productName": "PoseRunner",
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Utility",
+      "icon": "build/icons"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^36.2.0",
+    "electron-builder": "^26.0.12",
+    "electron-packager": "^17.1.2"
+  },
+  "dependencies": {
+    "three": "^0.176.0"
+  }
+}

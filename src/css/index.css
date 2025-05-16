@@ -1,0 +1,78 @@
+* {
+    font-family: "Ubuntu Mono", monospace;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+}
+
+canvas {
+    display: block;
+    z-index: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#gui {
+    z-index: 100;
+    font-size: small;
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 5px;
+}
+
+#gui-button-container {
+    display: flex;
+    flex-direction: column;
+    padding: 0 10px;
+}
+.gui-row {
+    margin-bottom: 10px;
+}
+
+.gui-input {
+    display: flex;
+    align-items: center;
+    color: #fff;
+    z-index: 1000;
+    padding: 3px 10px
+}
+
+.info {
+    color: white;
+    padding: 10px;
+}
+
+#gui-button-container button {
+    margin-right: 5px;
+    padding: 5px 10px;
+    background-color: #444;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+#gui-button-container button:hover {
+    background-color: #666;
+}
+
+#gui-button-container button:active {
+    background-color: #222;
+}
+
+#pose_runner_logo{
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 75px;
+    height: 75px;
+    z-index: 1000;
+    opacity: 0.8;
+}

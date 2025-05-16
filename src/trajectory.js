@@ -110,8 +110,14 @@ function parseCSVContent(contenu, transformCoords = false) {
   const points = [];
   const lignes = contenu.split('\n');
   
-  const premiereLigne = lignes[0].trim();
-  const debutIndex = premiereLigne.startsWith('timestamp,x,y,z') ? 1 : 0;
+  // Amélioration : Vérifier plus largement si la première ligne est un en-tête
+  const premiereLigne = lignes[0].trim().toLowerCase();
+  const debutIndex = (
+    premiereLigne.includes('timestamp') && 
+    premiereLigne.includes('x') && 
+    premiereLigne.includes('y') && 
+    premiereLigne.includes('z')
+  ) ? 1 : 0;
   
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -123,6 +129,7 @@ function parseCSVContent(contenu, transformCoords = false) {
     
     const valeurs = ligne.split(',');
     if (valeurs.length >= 8) {
+      const timestamp = parseFloat(valeurs[0]);
       const x = parseFloat(valeurs[1]);
       const y = parseFloat(valeurs[2]);
       const z = parseFloat(valeurs[3]);
@@ -131,8 +138,8 @@ function parseCSVContent(contenu, transformCoords = false) {
       const qz = parseFloat(valeurs[6]);
       const qw = parseFloat(valeurs[7]);
       
-      if ([x, y, z, qx, qy, qz, qw].every(v => !isNaN(v))) {
-        rawPoints.push({ x, y, z, qx, qy, qz, qw });
+      if ([timestamp, x, y, z, qx, qy, qz, qw].every(v => !isNaN(v))) {
+        rawPoints.push({ timestamp, x, y, z, qx, qy, qz, qw });
 
         minX = Math.min(minX, x);
         minY = Math.min(minY, y);
@@ -166,7 +173,8 @@ function parseCSVContent(contenu, transformCoords = false) {
       quat = new THREE.Quaternion(p.qx, p.qy, p.qz, p.qw);
     }
 
-    vec.quaternion = quat; // ⬅️ Ajout de la rotation directement à l'objet Vector3
+    vec.quaternion = quat; 
+    vec.timestamp = p.timestamp;
     points.push(vec);
   });
 

@@ -1,4 +1,3 @@
-
 export class CameraFrustum {
     constructor(scene, options = {}) {
         this.scene = scene;

@@ -9,7 +9,7 @@ export let trajReference = null; // Référence vers la trajectoire de vérité 
 // Variables globales
 export let world, scene, cameraRig, camera, renderer, controls;
 export let pointCloud;
-export const pointSize = 0.05;
+export const pointSize = 0.05;//0.25;
 export let cameraFrustum; // Nouvelle variable pour le frustum
 
 
@@ -85,21 +85,20 @@ function init() {
 
     loadPointCloud();
 
-    loadAndDisplayMatchPoints('./data/000074.csv', 0x00ff00, 0.2);
+    loadAndDisplayMatchPoints('./data/match/00/002552.csv', 0x00ff00, 0.2);
     //initCameraFrustum();
     initKittiCameraFrustum();
     setupFrustumControls();
     // Chargement des trajectoires
     const fichiersPaths = [
-        './example/GT_poses.csv',  // Trajectoire de vérité (référence)
-        './example/poses.csv',
-        './data/poses_masterloc.csv'
+        //'./data/poses_GT_00.csv' //GT seq 00
+        './data/trajectory/03/GT.csv' //GT seq 00
     ];
 
     const nomTrajectoires = [
         "Ground truth",
-        "I2D-Loc",
-        "Master_Loc"
+        //"I2D-Loc",
+        //"Master_Loc"
     ];
 
     // Définir des couleurs distinctes pour chaque trajectoire
@@ -161,6 +160,59 @@ function init() {
         });
 
         setupFileImports();
+
+//LISTENER A BOUGER AILLEURS
+document.getElementById("export-csv").addEventListener("click", () => {
+    if (!pointCloud || !pointCloud.geometry) {
+        alert("Aucun nuage de points chargé !");
+        return;
+    }
+    alert("Generation du CSV");
+
+    const positions = pointCloud.geometry.attributes.position.array;
+    const numPoints = positions.length / 3;
+
+    let csvContent = "x,y,z\n";
+    for (let i = 0; i < numPoints; i++) {
+        const x = positions[i * 3];
+        const y = positions[i * 3 + 1];
+        const z = positions[i * 3 + 2];
+        csvContent += `${x},${y},${z}\n`;
+    }
+
+    // Création du blob et téléchargement
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pointcloud.csv";
+    a.click();
+
+    URL.revokeObjectURL(url);
+});
+
+// Modifiez le gestionnaire d'événements pour le bouton d'animation
+document.getElementById('run-animation').addEventListener('click', function() {
+    if (animationTrajectoire.estEnCours) {
+        arreterAnimation();
+        this.textContent = 'Run';
+    } else {
+        demarrerAnimation();
+        this.textContent = 'Stop';
+    }
+});
+
+// Ajouter un bouton pour activer la visualisation
+document.getElementById('gui-button-container').innerHTML += `
+    <div class="gui-row">
+        <button id="visualize-projections">Show LIDAR Projections</button>
+    </div>
+`;
+
+document.getElementById('visualize-projections').addEventListener('click', visualizeLidarProjections);
+
+
 
     window.addEventListener('resize', onWindowResize);
     animate();
@@ -257,17 +309,17 @@ function setupFrustumControls() {
     const guiContainer = document.getElementById('gui');
     
     // Section pour les paramètres du frustum
-    const frustumSection = document.createElement('div');
+    /* const frustumSection = document.createElement('div');
     frustumSection.className = 'gui-input';
     frustumSection.innerHTML = `
         <label for="frustum-fov">FOV: </label>
         <input type="range" id="frustum-fov" min="20" max="120" value="60" style="width: 100px;">
         <span id="frustum-fov-value">60°</span>
     `;
-    guiContainer.appendChild(frustumSection);
+    guiContainer.appendChild(frustumSection); */
     
     // Contrôles pour la calibration
-    const calibX = document.createElement('div');
+    /* const calibX = document.createElement('div');
     calibX.className = 'gui-input';
     calibX.innerHTML = `
         <label for="calib-x">Calib X: </label>
@@ -292,10 +344,10 @@ function setupFrustumControls() {
         <input type="range" id="calib-z" min="-2" max="2" value="0" step="0.1" style="width: 100px;">
         <span id="calib-z-value">0</span>
     `;
-    guiContainer.appendChild(calibZ);
+    guiContainer.appendChild(calibZ); */
     
     // Écouteurs d'événements pour les contrôles
-    document.getElementById('frustum-fov').addEventListener('input', function() {
+    /* document.getElementById('frustum-fov').addEventListener('input', function() {
         const fov = parseInt(this.value);
         document.getElementById('frustum-fov-value').textContent = fov + '°';
         cameraFrustum.setParams({ fov: fov });
@@ -329,7 +381,7 @@ function setupFrustumControls() {
             y: parseFloat(document.getElementById('calib-y').value),
             z: z
         }});
-    });
+    }); */
     
     // Bouton pour activer/désactiver la visualisation du frustum
     const toggleButton = document.createElement('div');
@@ -360,70 +412,67 @@ export function updateFrustumPosition(position, rotation = null) {
 }
 
 
-document.getElementById("export-csv").addEventListener("click", () => {
-    if (!pointCloud || !pointCloud.geometry) {
-        alert("Aucun nuage de points chargé !");
-        return;
-    }
-
-    const positions = pointCloud.geometry.attributes.position.array;
-    const numPoints = positions.length / 3;
-
-    let csvContent = "x,y,z\n";
-    for (let i = 0; i < numPoints; i++) {
-        const x = positions[i * 3];
-        const y = positions[i * 3 + 1];
-        const z = positions[i * 3 + 2];
-        csvContent += `${x},${y},${z}\n`;
-    }
-
-    // Création du blob et téléchargement
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "pointcloud.csv";
-    a.click();
-
-    URL.revokeObjectURL(url);
-});
-
-
 function setupFileImports() {
-    // Configuration pour l'importation de la carte (PCD)
-    const importMapButton = document.getElementById('import-map');
-    const mapFileInput = document.getElementById('map-file-input');
-    
-    importMapButton.addEventListener('click', () => {
-        mapFileInput.click();
-    });
-    
-    mapFileInput.addEventListener('change', (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            const fileURL = URL.createObjectURL(file);
-            loadCustomPointCloud(fileURL, file.name, scene, pointCloud, camera);
+    // Attendre que le DOM soit complètement chargé
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log("Setting up file imports...");
+        
+        // Configuration pour l'importation de la carte (PCD)
+        const importMapButton = document.getElementById('import-map');
+        const mapFileInput = document.getElementById('map-file-input');
+        
+        if (!importMapButton || !mapFileInput) {
+            console.error("Map import elements not found!");
+            return;
         }
-    });
-    
-    // Configuration pour l'importation de trajectoire (CSV)
-    const importTrajectoryButton = document.getElementById('import-trajectory');
-    const trajectoryFileInput = document.getElementById('trajectory-file-input');
-    
-    importTrajectoryButton.addEventListener('click', () => {
-        trajectoryFileInput.click();
-    });
-    
-    trajectoryFileInput.addEventListener('change', (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            alert("Importation")
-            importTrajectoryCSV(file);
+        
+        importMapButton.addEventListener('click', () => {
+            console.log("Map import button clicked");
+            mapFileInput.click();
+        });
+        
+        mapFileInput.addEventListener('change', (event) => {
+            console.log("Map file selected");
+            const file = event.target.files[0];
+            if (file) {
+                const fileURL = URL.createObjectURL(file);
+                // Vérifier si la fonction existe
+                if (typeof loadCustomPointCloud === 'function') {
+                    loadCustomPointCloud(fileURL, file.name, scene, pointCloud, camera);
+                } else {
+                    console.error("loadCustomPointCloud function is not defined!");
+                }
+            }
+        });
+        
+        // Configuration pour l'importation de trajectoire (CSV)
+        const importTrajectoryButton = document.getElementById('import-trajectory');
+        const trajectoryFileInput = document.getElementById('trajectory-file-input');
+        
+        if (!importTrajectoryButton || !trajectoryFileInput) {
+            console.error("Trajectory import elements not found!");
+            return;
         }
+        
+        importTrajectoryButton.addEventListener('click', () => {
+            console.log("Trajectory import button clicked");
+            trajectoryFileInput.click();
+        });
+        
+        trajectoryFileInput.addEventListener('change', (event) => {
+            console.log("Trajectory file selected");
+            const file = event.target.files[0];
+            if (file) {
+                // Vérifier si la fonction existe
+                if (typeof importTrajectoryCSV === 'function') {
+                    importTrajectoryCSV(file);
+                } else {
+                    console.error("importTrajectoryCSV function is not defined!");
+                }
+            }
+        });
     });
 }
-
 
 
 
@@ -472,7 +521,8 @@ function createTestPointCloud() {
 function loadPointCloud() {
     const loader = new THREE.PCDLoader();
     loader.load(
-        'data/map-03_0.001_0-200.pcd', // Chemin vers votre fichier PCD
+        //'data/maps/map-00_0.1_0-4541.pcd', //MAP 00
+        'data/maps/03/map-03_0.1_0-801.pcd', // Chemin vers votre fichier PCD
         function (points) {
             // Le loader crée automatiquement un objet Points
             scene.add(points);
@@ -628,6 +678,7 @@ function onWindowResize() {
             
             // Lissage encore plus doux
             camera.position.lerp(idealPosition, cameraSmoothing.lerpFactor);
+            console.log("Timestamp actuel: ", pointActuel.timestamp);
 
             const position = new THREE.Vector3(
                 pointActuel.x,
@@ -824,16 +875,7 @@ function arreterAnimation() {
     document.querySelector('.info').innerHTML = 'Animation arrêtée';
 }
 
-// Modifiez le gestionnaire d'événements pour le bouton d'animation
-document.getElementById('run-animation').addEventListener('click', function() {
-    if (animationTrajectoire.estEnCours) {
-        arreterAnimation();
-        this.textContent = 'Run';
-    } else {
-        demarrerAnimation();
-        this.textContent = 'Stop';
-    }
-});
+
 function visualizeLidarProjections() {
     if (!cameraFrustum || !matchPoints || matchPoints.length === 0) {
         console.warn("No match points available or camera frustum not initialized");
@@ -856,16 +898,6 @@ function visualizeLidarProjections() {
         lineOpacity: 0.8
     });
 }
-
-// Ajouter un bouton pour activer la visualisation
-document.getElementById('gui-button-container').innerHTML += `
-    <div class="gui-row">
-        <button id="visualize-projections">Show LIDAR Projections</button>
-    </div>
-`;
-
-document.getElementById('visualize-projections').addEventListener('click', visualizeLidarProjections);
-
 
 
 
